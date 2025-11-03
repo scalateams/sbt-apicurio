@@ -79,34 +79,67 @@ object SchemaReferenceUtils {
       case Right(json) =>
         val refs = mutable.Set[String]()
 
-        // Recursively find type references
-        def findTypeRefs(j: Json): Unit = {
-          j.fold(
+        // Only extract type references from specific schema contexts
+        def extractTypeRef(typeValue: Json): Unit = {
+          typeValue.fold(
             jsonNull = (),
             jsonBoolean = _ => (),
             jsonNumber = _ => (),
             jsonString = str => {
-              // Check if string is a complex type reference (not primitive)
-              if (!isPrimitiveAvroType(str) && !str.startsWith("array<") && !str.startsWith("map<")) {
+              // Only add if it's a complex type (not primitive)
+              if (!isPrimitiveAvroType(str) && isQualifiedTypeName(str)) {
                 refs += str
               }
             },
-            jsonArray = arr => arr.foreach(findTypeRefs),
+            jsonArray = arr => arr.foreach(extractTypeRef), // Union types
             jsonObject = obj => {
+              // Handle nested record/array/map definitions
               obj.toMap.foreach {
-                case ("type", value) =>
-                  value.asString match {
-                    case Some(typeStr) if !isPrimitiveAvroType(typeStr) =>
-                      refs += typeStr
-                    case _ => findTypeRefs(value)
-                  }
-                case (_, value) => findTypeRefs(value)
+                case ("type", nestedType) => extractTypeRef(nestedType)
+                case ("items", items) => extractTypeRef(items) // Array items
+                case ("values", values) => extractTypeRef(values) // Map values
+                case ("fields", fields) => extractTypeRef(fields) // Nested fields
+                case _ => ()
               }
             }
           )
         }
 
-        findTypeRefs(json)
+        // Find "type" fields in the schema structure
+        def findTypeFields(j: Json, inFieldContext: Boolean = false): Unit = {
+          j.fold(
+            jsonNull = (),
+            jsonBoolean = _ => (),
+            jsonNumber = _ => (),
+            jsonString = _ => (),
+            jsonArray = arr => arr.foreach(e => findTypeFields(e, inFieldContext)),
+            jsonObject = obj => {
+              obj.toMap.foreach {
+                case ("type", value) if inFieldContext =>
+                  // We're in a field definition, extract type references
+                  extractTypeRef(value)
+                case ("fields", value) =>
+                  // Entering field definitions
+                  findTypeFields(value, inFieldContext = true)
+                case ("type", value) =>
+                  // Top-level type - only recurse if it's a record/array/map
+                  value.asString match {
+                    case Some("record") | Some("array") | Some("map") =>
+                      findTypeFields(value, inFieldContext = false)
+                    case _ => ()
+                  }
+                case (_, value) if inFieldContext =>
+                  // Continue searching in field context
+                  findTypeFields(value, inFieldContext)
+                case (_, value) =>
+                  // Continue searching in non-field context
+                  findTypeFields(value, inFieldContext = false)
+              }
+            }
+          )
+        }
+
+        findTypeFields(json)
 
         // Convert to SchemaReference objects
         refs.toList.map { ref =>
@@ -120,6 +153,14 @@ object SchemaReferenceUtils {
         logger.warn(s"Failed to parse Avro schema for reference detection: ${error.getMessage}")
         List.empty
     }
+  }
+
+  /**
+   * Check if a string looks like a qualified type name (has dots or starts with uppercase)
+   */
+  private def isQualifiedTypeName(str: String): Boolean = {
+    // Type names either contain dots (fully qualified) or start with uppercase (simple record name)
+    str.contains(".") || (str.nonEmpty && str.charAt(0).isUpper)
   }
 
   /**
