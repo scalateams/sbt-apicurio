@@ -5,7 +5,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.{BeforeAndAfterAll, Tag}
 import sbt.util.Logger
 import java.io.File
-import scala.util.{Success, Failure}
+import scala.util.Success
 import org.scalateams.sbt.apicurio.ApicurioModels.ApicurioError
 
 object IntegrationTest extends Tag("org.scalateams.sbt.apicurio.IntegrationTest")

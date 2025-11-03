@@ -7,7 +7,6 @@ import sttp.client3._
 import sttp.client3.circe._
 
 import java.security.MessageDigest
-import scala.util.Try
 
 class ApicurioClient(
   registryUrl: String,
