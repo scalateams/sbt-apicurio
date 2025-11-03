@@ -2,7 +2,6 @@ package org.scalateams.sbt.apicurio
 
 import org.scalateams.sbt.apicurio.ApicurioModels._
 import io.circe.parser._
-import io.circe.syntax._
 import sbt.util.Logger
 import sttp.client3._
 import sttp.client3.circe._
@@ -123,7 +122,8 @@ class ApicurioClient(
     groupId: String,
     artifactId: String,
     artifactType: ArtifactType,
-    content: String
+    content: String,
+    references: List[ContentReference] = List.empty
   ): Try[CreateArtifactResponse] = {
     val url = uri"$baseUri/groups/$groupId/artifacts"
 
@@ -147,10 +147,15 @@ class ApicurioClient(
         version = None, // Let Apicurio assign version
         content = ContentRequest(
           content = content, // Content as string (JSON for most types, raw proto for Protobuf)
-          contentType = "application/json"
+          contentType = "application/json",
+          references = references
         )
       )
     )
+
+    if (references.nonEmpty) {
+      logger.debug(s"Creating artifact with ${references.size} reference(s): ${references.map(_.artifactId).mkString(", ")}")
+    }
 
     val request = basicRequest
       .post(url)
@@ -174,7 +179,8 @@ class ApicurioClient(
   def createVersion(
     groupId: String,
     artifactId: String,
-    content: String
+    content: String,
+    references: List[ContentReference] = List.empty
   ): Try[VersionMetadata] = {
     val url = uri"$baseUri/groups/$groupId/artifacts/$artifactId/versions"
 
@@ -198,9 +204,14 @@ class ApicurioClient(
       version = None, // Let Apicurio auto-increment
       content = ContentRequest(
         content = content, // Content as string
-        contentType = "application/json"
+        contentType = "application/json",
+        references = references
       )
     )
+
+    if (references.nonEmpty) {
+      logger.debug(s"Creating version with ${references.size} reference(s): ${references.map(_.artifactId).mkString(", ")}")
+    }
 
     val request = basicRequest
       .post(url)
@@ -283,7 +294,8 @@ class ApicurioClient(
     artifactId: String,
     artifactType: ArtifactType,
     content: String,
-    compatibilityLevel: CompatibilityLevel
+    compatibilityLevel: CompatibilityLevel,
+    references: List[ContentReference] = List.empty
   ): Try[Either[CreateArtifactResponse, VersionMetadata]] = {
     val contentHash = computeHash(content)
 
@@ -301,14 +313,14 @@ class ApicurioClient(
               // Check compatibility before creating new version
               checkCompatibility(groupId, artifactId, content, compatibilityLevel) match {
                 case Success(true) =>
-                  createVersion(groupId, artifactId, content).map(Right(_))
+                  createVersion(groupId, artifactId, content, references).map(Right(_))
                 case Success(false) =>
                   Failure(new ApicurioException(
                     s"Schema is not compatible with existing versions: $groupId:$artifactId"
                   ))
                 case Failure(ex) =>
                   logger.warn(s"Compatibility check failed, proceeding anyway: ${ex.getMessage}")
-                  createVersion(groupId, artifactId, content).map(Right(_))
+                  createVersion(groupId, artifactId, content, references).map(Right(_))
               }
             }
           }
@@ -316,7 +328,7 @@ class ApicurioClient(
 
       case Failure(_: ArtifurioNotFoundException) =>
         // Artifact doesn't exist, create it
-        createArtifact(groupId, artifactId, artifactType, content).map(Left(_))
+        createArtifact(groupId, artifactId, artifactType, content, references).map(Left(_))
 
       case Failure(ex) =>
         Failure(ex)
