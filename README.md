@@ -46,6 +46,23 @@ In your `build.sbt`:
 enablePlugins(ApicurioPlugin)
 ```
 
+### Getting Help
+
+Get comprehensive usage information anytime:
+
+```bash
+sbt apicurioHelp
+```
+
+This displays:
+- All available tasks and settings
+- Configuration examples
+- Supported schema types
+- Common workflows
+- Your current configuration status
+
+See [HELP_FEATURE.md](HELP_FEATURE.md) for details.
+
 ### Configure required settings
 
 ```scala
@@ -221,6 +238,7 @@ apicurioPullOutputDir := sourceDirectory.value / "main" / "external-schemas"
 
 | Task | Description |
 |------|-------------|
+| `apicurioHelp` | Display comprehensive help and usage information |
 | `apicurioPublish` | Publish schemas to Apicurio Registry |
 | `apicurioPull` | Pull schema dependencies from registry |
 | `apicurioDiscoverSchemas` | Discover and list all schema files |
