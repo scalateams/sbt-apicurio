@@ -1,6 +1,6 @@
-package com.upstartcommerce.sbt.apicurio
+package org.scalateams.sbt.apicurio
 
-import com.upstartcommerce.sbt.apicurio.ApicurioModels._
+import org.scalateams.sbt.apicurio.ApicurioModels._
 import io.circe.parser._
 import io.circe.syntax._
 import sbt.util.Logger
@@ -29,7 +29,7 @@ class ApicurioClient(
    * Get artifact metadata
    */
   def getArtifactMetadata(groupId: String, artifactId: String): Try[ArtifactMetadata] = {
-    val url = uri"$baseUri/apis/registry/v3/groups/$groupId/artifacts/$artifactId"
+    val url = uri"$baseUri/groups/$groupId/artifacts/$artifactId"
 
     logger.debug(s"Getting artifact metadata: $groupId:$artifactId")
 
@@ -54,7 +54,7 @@ class ApicurioClient(
    * Get latest version of an artifact
    */
   def getLatestVersion(groupId: String, artifactId: String): Try[VersionMetadata] = {
-    val url = uri"$baseUri/apis/registry/v3/groups/$groupId/artifacts/$artifactId/versions"
+    val url = uri"$baseUri/groups/$groupId/artifacts/$artifactId/versions"
 
     logger.debug(s"Getting latest version: $groupId:$artifactId")
 
@@ -87,56 +87,81 @@ class ApicurioClient(
    * Get specific version content
    */
   def getVersionContent(groupId: String, artifactId: String, version: String): Try[String] = {
-    val url = if (version == "latest") {
-      uri"$baseUri/apis/registry/v3/groups/$groupId/artifacts/$artifactId"
+    // If "latest" is requested, resolve it to the actual latest version number first
+    if (version == "latest") {
+      getLatestVersion(groupId, artifactId).flatMap { latestVersionMeta =>
+        getVersionContent(groupId, artifactId, latestVersionMeta.version)
+      }
     } else {
-      uri"$baseUri/apis/registry/v3/groups/$groupId/artifacts/$artifactId/versions/$version"
-    }
+      val url = uri"$baseUri/groups/$groupId/artifacts/$artifactId/versions/$version/content"
 
-    logger.debug(s"Getting version content: $groupId:$artifactId:$version")
+      logger.debug(s"Getting version content: $groupId:$artifactId:$version")
 
-    val request = basicRequest
-      .get(url)
-      .headers(authHeaders ++ Map("Accept" -> "application/json"))
-      .response(asString)
+      val request = basicRequest
+        .get(url)
+        .headers(authHeaders ++ Map("Accept" -> "application/json"))
+        .response(asString)
 
-    Try {
-      val response = request.send(backend)
-      response.body match {
-        case Right(content) => content
-        case Left(error) if response.code.code == 404 =>
-          throw new ArtifurioNotFoundException(s"Version not found: $groupId:$artifactId:$version")
-        case Left(error) =>
-          throw new ApicurioException(s"Failed to get version content: $error")
+      Try {
+        val response = request.send(backend)
+        response.body match {
+          case Right(content) => content
+          case Left(error) if response.code.code == 404 =>
+            throw new ArtifurioNotFoundException(s"Version not found: $groupId:$artifactId:$version")
+          case Left(error) =>
+            throw new ApicurioException(s"Failed to get version content: $error")
+        }
       }
     }
   }
 
   /**
    * Create a new artifact
+   * Returns both artifact and version metadata
    */
   def createArtifact(
     groupId: String,
     artifactId: String,
     artifactType: ArtifactType,
     content: String
-  ): Try[ArtifactMetadata] = {
-    val url = uri"$baseUri/apis/registry/v3/groups/$groupId/artifacts"
+  ): Try[CreateArtifactResponse] = {
+    val url = uri"$baseUri/groups/$groupId/artifacts"
 
     logger.info(s"Creating artifact: $groupId:$artifactId (${artifactType.value})")
+
+    // Validate content is valid JSON for JSON-based schema types
+    // Protobuf schemas are not JSON, so skip validation for those
+    if (artifactType != ArtifactType.Protobuf) {
+      parse(content) match {
+        case Left(error) =>
+          throw new ApicurioException(s"Failed to parse schema content as JSON: ${error.getMessage}")
+        case Right(_) => // Valid JSON, continue
+      }
+    }
+
+    // Create the request body according to Apicurio 3.x API spec
+    val requestBody = CreateArtifactRequest(
+      artifactId = artifactId,
+      artifactType = artifactType.value,
+      firstVersion = FirstVersionRequest(
+        version = None, // Let Apicurio assign version
+        content = ContentRequest(
+          content = content, // Content as string (JSON for most types, raw proto for Protobuf)
+          contentType = "application/json"
+        )
+      )
+    )
 
     val request = basicRequest
       .post(url)
       .headers(authHeaders ++ Map("Content-Type" -> "application/json"))
-      .header("X-Registry-ArtifactId", artifactId)
-      .header("X-Registry-ArtifactType", artifactType.value)
-      .body(content)
-      .response(asJson[ArtifactMetadata])
+      .body(requestBody)
+      .response(asJson[CreateArtifactResponse])
 
     Try {
       val response = request.send(backend)
       response.body match {
-        case Right(metadata) => metadata
+        case Right(createResponse) => createResponse
         case Left(error) =>
           throw new ApicurioException(s"Failed to create artifact: ${error.getMessage}")
       }
@@ -151,14 +176,36 @@ class ApicurioClient(
     artifactId: String,
     content: String
   ): Try[VersionMetadata] = {
-    val url = uri"$baseUri/apis/registry/v3/groups/$groupId/artifacts/$artifactId/versions"
+    val url = uri"$baseUri/groups/$groupId/artifacts/$artifactId/versions"
 
     logger.info(s"Creating new version: $groupId:$artifactId")
+
+    // Get artifact metadata to determine type
+    val artifactMetadata = getArtifactMetadata(groupId, artifactId)
+    val isProtobuf = artifactMetadata.map(_.artifactType == "PROTOBUF").getOrElse(false)
+
+    // Validate content is valid JSON for JSON-based schema types
+    if (!isProtobuf) {
+      parse(content) match {
+        case Left(error) =>
+          throw new ApicurioException(s"Failed to parse schema content as JSON: ${error.getMessage}")
+        case Right(_) => // Valid JSON, continue
+      }
+    }
+
+    // Create the request body according to Apicurio 3.x API spec
+    val requestBody = CreateVersionRequest(
+      version = None, // Let Apicurio auto-increment
+      content = ContentRequest(
+        content = content, // Content as string
+        contentType = "application/json"
+      )
+    )
 
     val request = basicRequest
       .post(url)
       .headers(authHeaders ++ Map("Content-Type" -> "application/json"))
-      .body(content)
+      .body(requestBody)
       .response(asJson[VersionMetadata])
 
     Try {
@@ -180,7 +227,7 @@ class ApicurioClient(
     content: String,
     compatibilityLevel: CompatibilityLevel
   ): Try[Boolean] = {
-    val url = uri"$baseUri/apis/registry/v3/groups/$groupId/artifacts/$artifactId/rules/COMPATIBILITY"
+    val url = uri"$baseUri/groups/$groupId/artifacts/$artifactId/rules/COMPATIBILITY"
 
     logger.debug(s"Checking compatibility: $groupId:$artifactId (${compatibilityLevel.value})")
 
@@ -199,7 +246,7 @@ class ApicurioClient(
       }
 
       // Now test compatibility
-      val testUrl = uri"$baseUri/apis/registry/v3/groups/$groupId/artifacts/$artifactId/rules/COMPATIBILITY/test"
+      val testUrl = uri"$baseUri/groups/$groupId/artifacts/$artifactId/rules/COMPATIBILITY/test"
       val testRequest = basicRequest
         .post(testUrl)
         .headers(authHeaders ++ Map("Content-Type" -> "application/json"))
@@ -229,6 +276,7 @@ class ApicurioClient(
 
   /**
    * Publish a schema - creates artifact if not exists, or creates new version if changed
+   * Returns Left(CreateArtifactResponse) if newly created, Right(VersionMetadata) if updated
    */
   def publishSchema(
     groupId: String,
@@ -236,7 +284,7 @@ class ApicurioClient(
     artifactType: ArtifactType,
     content: String,
     compatibilityLevel: CompatibilityLevel
-  ): Try[Either[ArtifactMetadata, VersionMetadata]] = {
+  ): Try[Either[CreateArtifactResponse, VersionMetadata]] = {
     val contentHash = computeHash(content)
 
     getArtifactMetadata(groupId, artifactId) match {

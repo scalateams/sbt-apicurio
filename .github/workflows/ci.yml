@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Test
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        scala: [2.12.19]
+        java: [temurin@11, temurin@17]
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java and Scala
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: sbt
+
+      - name: Compile
+        run: sbt ++${{ matrix.scala }} compile
+
+      - name: Run tests
+        run: sbt ++${{ matrix.scala }} test
+
+      - name: Check formatting
+        run: sbt ++${{ matrix.scala }} scalafmtCheckAll || true
+
+  publish-snapshot:
+    name: Publish Snapshot
+    needs: [test]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java and Scala
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 11
+          cache: sbt
+
+      - name: Publish local
+        run: sbt publishLocal
+        
+      - name: Cleanup
+        run: |
+          find $HOME/.sbt -name "*.lock" -delete
+          find $HOME/.ivy2 -name "ivydata-*.properties" -delete

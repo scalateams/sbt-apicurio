@@ -1,4 +1,4 @@
-package com.upstartcommerce.sbt.apicurio
+package org.scalateams.sbt.apicurio
 
 import io.circe.{Decoder, Encoder}
 import io.circe.generic.semiauto._
@@ -59,13 +59,18 @@ object ApicurioModels {
     }
   }
 
+  // Artifact-level metadata (from GET /groups/{groupId}/artifacts/{artifactId})
   case class ArtifactMetadata(
     groupId: String,
     artifactId: String,
-    version: String,
     artifactType: String,
-    contentId: Option[Long] = None,
-    globalId: Option[Long] = None
+    owner: Option[String] = None,
+    createdOn: Option[String] = None,
+    modifiedBy: Option[String] = None,
+    modifiedOn: Option[String] = None,
+    name: Option[String] = None,
+    description: Option[String] = None,
+    labels: Option[Map[String, String]] = None
   )
 
   object ArtifactMetadata {
@@ -73,9 +78,20 @@ object ApicurioModels {
     implicit val encoder: Encoder[ArtifactMetadata] = deriveEncoder
   }
 
+  // Response from POST /groups/{groupId}/artifacts (contains both artifact and version)
+  case class CreateArtifactResponse(
+    artifact: ArtifactMetadata,
+    version: VersionMetadata
+  )
+
+  object CreateArtifactResponse {
+    implicit val decoder: Decoder[CreateArtifactResponse] = deriveDecoder
+  }
+
   case class CreateArtifactRequest(
     artifactId: String,
     artifactType: String,
+    firstVersion: FirstVersionRequest,
     name: Option[String] = None,
     description: Option[String] = None
   )
@@ -84,8 +100,41 @@ object ApicurioModels {
     implicit val encoder: Encoder[CreateArtifactRequest] = deriveEncoder
   }
 
+  case class FirstVersionRequest(
+    version: Option[String] = None,
+    content: ContentRequest,
+    name: Option[String] = None,
+    description: Option[String] = None
+  )
+
+  object FirstVersionRequest {
+    implicit val encoder: Encoder[FirstVersionRequest] = deriveEncoder
+  }
+
+  case class ContentRequest(
+    content: String,
+    contentType: String = "application/json",
+    references: List[ContentReference] = List.empty
+  )
+
+  object ContentRequest {
+    implicit val encoder: Encoder[ContentRequest] = deriveEncoder
+  }
+
+  case class ContentReference(
+    groupId: Option[String] = None,
+    artifactId: String,
+    version: Option[String] = None,
+    name: String
+  )
+
+  object ContentReference {
+    implicit val encoder: Encoder[ContentReference] = deriveEncoder
+  }
+
   case class CreateVersionRequest(
     version: Option[String] = None,
+    content: ContentRequest,
     name: Option[String] = None,
     description: Option[String] = None
   )
@@ -94,11 +143,20 @@ object ApicurioModels {
     implicit val encoder: Encoder[CreateVersionRequest] = deriveEncoder
   }
 
+  // Version-level metadata
   case class VersionMetadata(
     version: String,
+    groupId: String,
+    artifactId: String,
+    artifactType: String,
     contentId: Long,
     globalId: Long,
-    createdOn: String
+    state: String,
+    createdOn: String,
+    owner: Option[String] = None,
+    name: Option[String] = None,
+    description: Option[String] = None,
+    labels: Option[Map[String, String]] = None
   )
 
   object VersionMetadata {
