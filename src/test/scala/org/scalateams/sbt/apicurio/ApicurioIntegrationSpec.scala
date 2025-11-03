@@ -39,7 +39,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
       val client = new ApicurioClient(registryUrl, apiKey, testLogger)
       // Try a simple GET to see if it's up
       client.getArtifactMetadata(testGroupId, "non-existent-test") match {
-        case Failure(_: ArtifurioNotFoundException) =>
+        case Failure(_: ApicurioNotFoundException) =>
           // 404 is expected, but means the service is reachable
           apicurioAvailable = true
         case Success(_) =>

@@ -22,6 +22,11 @@ class ApicurioClient(
     apiKey.map(key => Map("Authorization" -> s"Bearer $key")).getOrElse(Map.empty)
   }
 
+  private def contentTypeForArtifactType(artifactType: ArtifactType): String = artifactType match {
+    case ArtifactType.Protobuf => "application/x-protobuf"
+    case _ => "application/json"
+  }
+
   def close(): Unit = backend.close()
 
   /**
@@ -42,7 +47,7 @@ class ApicurioClient(
       response.body match {
         case Right(metadata) => metadata
         case Left(error) if response.code.code == 404 =>
-          throw new ArtifurioNotFoundException(s"Artifact not found: $groupId:$artifactId")
+          throw new ApicurioNotFoundException(s"Artifact not found: $groupId:$artifactId")
         case Left(error) =>
           throw new ApicurioException(s"Failed to get artifact metadata: ${error.getMessage}")
       }
@@ -75,7 +80,7 @@ class ApicurioClient(
               throw new ApicurioException(s"Failed to parse versions: ${error.getMessage}")
           }
         case Left(error) if response.code.code == 404 =>
-          throw new ArtifurioNotFoundException(s"Artifact not found: $groupId:$artifactId")
+          throw new ApicurioNotFoundException(s"Artifact not found: $groupId:$artifactId")
         case Left(error) =>
           throw new ApicurioException(s"Failed to get versions: $error")
       }
@@ -106,7 +111,7 @@ class ApicurioClient(
         response.body match {
           case Right(content) => content
           case Left(error) if response.code.code == 404 =>
-            throw new ArtifurioNotFoundException(s"Version not found: $groupId:$artifactId:$version")
+            throw new ApicurioNotFoundException(s"Version not found: $groupId:$artifactId:$version")
           case Left(error) =>
             throw new ApicurioException(s"Failed to get version content: $error")
         }
@@ -147,7 +152,7 @@ class ApicurioClient(
         version = None, // Let Apicurio assign version
         content = ContentRequest(
           content = content, // Content as string (JSON for most types, raw proto for Protobuf)
-          contentType = "application/json",
+          contentType = contentTypeForArtifactType(artifactType),
           references = references
         )
       )
@@ -187,8 +192,9 @@ class ApicurioClient(
     logger.info(s"Creating new version: $groupId:$artifactId")
 
     // Get artifact metadata to determine type
-    val artifactMetadata = getArtifactMetadata(groupId, artifactId)
-    val isProtobuf = artifactMetadata.map(_.artifactType == "PROTOBUF").getOrElse(false)
+    val artifactType = getArtifactMetadata(groupId, artifactId).toOption
+      .flatMap(m => ArtifactType.fromString(m.artifactType))
+    val isProtobuf = artifactType.contains(ArtifactType.Protobuf)
 
     // Validate content is valid JSON for JSON-based schema types
     if (!isProtobuf) {
@@ -204,7 +210,7 @@ class ApicurioClient(
       version = None, // Let Apicurio auto-increment
       content = ContentRequest(
         content = content, // Content as string
-        contentType = "application/json",
+        contentType = artifactType.map(contentTypeForArtifactType).getOrElse("application/json"),
         references = references
       )
     )
@@ -348,7 +354,7 @@ class ApicurioClient(
           }
         }
 
-      case Failure(_: ArtifurioNotFoundException) =>
+      case Failure(_: ApicurioNotFoundException) =>
         // Artifact doesn't exist, create it
         if (references.nonEmpty) {
           logger.info(s"Creating new artifact: $artifactId with ${references.size} reference(s)")
@@ -372,5 +378,5 @@ class ApicurioClient(
 class ApicurioException(message: String, cause: Throwable = null)
   extends Exception(message, cause)
 
-class ArtifurioNotFoundException(message: String)
+class ApicurioNotFoundException(message: String)
   extends ApicurioException(message)

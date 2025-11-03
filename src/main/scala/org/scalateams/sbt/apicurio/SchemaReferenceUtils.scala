@@ -249,13 +249,10 @@ object SchemaReferenceUtils {
     // Topological sort using Kahn's algorithm
     val inDegree = mutable.Map[String, Int]().withDefaultValue(0)
 
-    // Calculate in-degrees
+    // Calculate in-degrees: count how many dependencies each schema has (within this batch)
     dependencies.foreach { case (artifact, deps) =>
-      deps.foreach { dep =>
-        if (schemaMap.contains(dep)) {
-          inDegree(dep) = inDegree(dep) + 1
-        }
-      }
+      val localDeps = deps.filter(schemaMap.contains)
+      inDegree(artifact) = localDeps.size
     }
 
     // Start with schemas that have no dependencies
@@ -272,14 +269,12 @@ object SchemaReferenceUtils {
       val current = queue.dequeue()
       schemaMap.get(current).foreach(result += _)
 
-      // Reduce in-degree for dependents
-      dependencies.get(current).foreach { deps =>
-        deps.foreach { dep =>
-          if (schemaMap.contains(dep)) {
-            inDegree(dep) = inDegree(dep) - 1
-            if (inDegree(dep) == 0) {
-              queue.enqueue(dep)
-            }
+      // Find all schemas that depend on current and reduce their in-degree
+      dependencies.foreach { case (artifact, deps) =>
+        if (deps.contains(current) && schemaMap.contains(artifact)) {
+          inDegree(artifact) = inDegree(artifact) - 1
+          if (inDegree(artifact) == 0) {
+            queue.enqueue(artifact)
           }
         }
       }
