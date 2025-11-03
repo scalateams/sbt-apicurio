@@ -1,0 +1,372 @@
+# sbt-apicurio
+
+An SBT AutoPlugin for integrating with [Apicurio Schema Registry 3.x](https://www.apicur.io/registry/) during the build cycle. This plugin allows you to publish schemas to Apicurio Registry and pull external schemas at build time.
+
+## Features
+
+- **Schema Publishing**: Automatically detect and publish changed schemas to Apicurio Registry
+- **Change Detection**: Hash-based comparison to only publish when schemas have changed
+- **Compatibility Checking**: Validate schema compatibility before publishing
+- **Schema Dependencies**: Pull schemas from registry before compilation
+- **Multi-Format Support**: Avro, JSON Schema, Protobuf, OpenAPI, AsyncAPI
+- **API Key Authentication**: Secure authentication with Apicurio Registry
+
+## Installation
+
+Add the plugin to your `project/plugins.sbt`:
+
+```scala
+addSbtPlugin("com.upstartcommerce" % "sbt-apicurio" % "0.1.0-SNAPSHOT")
+```
+
+## Quick Start
+
+### Enable the plugin
+
+In your `build.sbt`:
+
+```scala
+enablePlugins(ApicurioPlugin)
+```
+
+### Configure required settings
+
+```scala
+// Required settings
+apicurioRegistryUrl := "https://your-registry.example.com"
+apicurioGroupId := "com.example.myservice"
+
+// Optional: API key for authentication
+apicurioApiKey := Some(sys.env.getOrElse("APICURIO_API_KEY", ""))
+```
+
+### Place your schemas
+
+By default, the plugin looks for schemas in `src/main/schemas/`:
+
+```
+src/main/schemas/
+├── UserCreated.avsc
+├── OrderPlaced.avsc
+└── ProductUpdated.json
+```
+
+### Publish schemas
+
+```bash
+sbt apicurioPublish
+```
+
+## Configuration
+
+### Required Settings
+
+| Setting | Type | Description |
+|---------|------|-------------|
+| `apicurioRegistryUrl` | `String` | URL of your Apicurio Registry instance |
+| `apicurioGroupId` | `String` | Group ID for your schemas (e.g., `com.example.myservice`) |
+
+### Optional Settings
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `apicurioApiKey` | `Option[String]` | `None` | API key for registry authentication |
+| `apicurioCompatibilityLevel` | `CompatibilityLevel` | `BACKWARD` | Schema compatibility level |
+| `apicurioSchemaPaths` | `Seq[File]` | `src/main/schemas` | Directories containing schema files |
+| `apicurioPullOutputDir` | `File` | `target/schemas` | Output directory for pulled schemas |
+| `apicurioPullDependencies` | `Seq[ApicurioDependency]` | `Seq.empty` | External schemas to pull |
+
+### Compatibility Levels
+
+```scala
+apicurioCompatibilityLevel := CompatibilityLevel.Backward           // Default
+apicurioCompatibilityLevel := CompatibilityLevel.BackwardTransitive
+apicurioCompatibilityLevel := CompatibilityLevel.Forward
+apicurioCompatibilityLevel := CompatibilityLevel.ForwardTransitive
+apicurioCompatibilityLevel := CompatibilityLevel.Full
+apicurioCompatibilityLevel := CompatibilityLevel.FullTransitive
+apicurioCompatibilityLevel := CompatibilityLevel.None
+```
+
+## Usage
+
+### Publishing Schemas
+
+The `apicurioPublish` task discovers and publishes schemas to the registry:
+
+```bash
+sbt apicurioPublish
+```
+
+**How it works:**
+1. Discovers all schema files in configured paths
+2. Computes hash of each schema
+3. Compares with latest version in registry
+4. Checks compatibility if schema has changed
+5. Creates new artifact or version if needed
+6. Skips unchanged schemas
+
+**Integration with CI/CD:**
+
+```scala
+// In build.sbt
+val publishSchemas = taskKey[Unit]("Publish schemas in CI")
+
+publishSchemas := {
+  if (sys.env.contains("CI")) {
+    apicurioPublish.value
+  } else {
+    streams.value.log.info("Skipping schema publish outside CI")
+  }
+}
+
+// Add to your release/deploy task
+publish := {
+  publishSchemas.value
+  publish.value
+}
+```
+
+### Pulling Schema Dependencies
+
+Declare dependencies on schemas from other services:
+
+```scala
+apicurioPullDependencies := Seq(
+  "com.example.catalog" % "CatalogItemCreated" % "latest",
+  "com.example.catalog" % "CatalogItemUpdated" % "latest",
+  "com.example.tenant" % "TenantCreated" % "3",
+  "com.example.pricing" % "PriceChanged" % "2"
+)
+```
+
+Schemas are automatically pulled before compilation starts:
+
+```bash
+sbt compile  # Automatically pulls dependencies first
+```
+
+**Manual pull:**
+
+```bash
+sbt apicurioPull
+```
+
+Downloaded schemas are saved to `target/schemas` (or configured output directory) organized by group:
+
+```
+target/schemas/
+├── com/example/catalog/
+│   ├── CatalogItemCreated.json
+│   └── CatalogItemUpdated.json
+└── com/example/tenant/
+    └── TenantCreated.json
+```
+
+### Custom Schema Locations
+
+```scala
+apicurioSchemaPaths := Seq(
+  sourceDirectory.value / "main" / "schemas",
+  sourceDirectory.value / "main" / "events",
+  baseDirectory.value / "custom-schemas"
+)
+```
+
+### Custom Pull Output Directory
+
+```scala
+apicurioPullOutputDir := sourceDirectory.value / "main" / "external-schemas"
+```
+
+## Schema File Organization
+
+### Artifact Mapping
+
+- **Group ID**: Explicitly configured via `apicurioGroupId`
+- **Artifact ID**: Derived from filename (without extension)
+  - `UserCreated.avsc` → artifact ID: `UserCreated`
+  - `order-placed.json` → artifact ID: `order-placed`
+- **Version**: Auto-incremented by Apicurio Registry
+
+### Supported File Types
+
+| Extension | Artifact Type | Description |
+|-----------|---------------|-------------|
+| `.avsc`, `.avro` | `AVRO` | Avro schema |
+| `.proto` | `PROTOBUF` | Protocol Buffers |
+| `.json` | `JSON` | JSON Schema |
+| `.yaml`, `.yml` | `OPENAPI`/`ASYNCAPI` | OpenAPI or AsyncAPI |
+
+## Tasks
+
+| Task | Description |
+|------|-------------|
+| `apicurioPublish` | Publish schemas to Apicurio Registry |
+| `apicurioPull` | Pull schema dependencies from registry |
+| `apicurioDiscoverSchemas` | Discover and list all schema files |
+| `apicurioValidateSettings` | Validate plugin configuration |
+
+## Complete Example
+
+```scala
+// build.sbt
+name := "my-service"
+organization := "com.example"
+
+enablePlugins(ApicurioPlugin)
+
+// Required Apicurio settings
+apicurioRegistryUrl := "https://registry.example.com"
+apicurioGroupId := "com.example.myservice"
+apicurioApiKey := sys.env.get("APICURIO_API_KEY")
+
+// Optional settings
+apicurioCompatibilityLevel := CompatibilityLevel.Backward
+apicurioSchemaPaths := Seq(
+  sourceDirectory.value / "main" / "schemas"
+)
+
+// Pull dependencies from other services
+apicurioPullDependencies := Seq(
+  "com.example.catalog" % "CatalogItemCreated" % "latest",
+  "com.example.order" % "OrderPlaced" % "latest",
+  "com.example.customer" % "CustomerUpdated" % "5"
+)
+
+// Optional: Hook into CI/CD
+val publishSchemasInCI = taskKey[Unit]("Publish schemas in CI environment")
+publishSchemasInCI := {
+  if (sys.env.get("CI").contains("true")) {
+    streams.value.log.info("Publishing schemas to Apicurio Registry")
+    apicurioPublish.value
+  }
+}
+```
+
+## Environment Variables
+
+You can use environment variables for sensitive configuration:
+
+```scala
+apicurioApiKey := sys.env.get("APICURIO_API_KEY")
+apicurioRegistryUrl := sys.env.getOrElse("APICURIO_URL", "https://default-registry.example.com")
+```
+
+**CI/CD Example:**
+
+```bash
+export APICURIO_API_KEY="your-api-key"
+export APICURIO_URL="https://registry.prod.example.com"
+sbt apicurioPublish
+```
+
+## Workflow Examples
+
+### Development Workflow
+
+1. Create or modify schema files in `src/main/schemas/`
+2. Test locally: `sbt compile test`
+3. Validate schemas: `sbt apicurioValidateSettings`
+4. Commit changes to version control
+5. CI/CD publishes schemas automatically
+
+### CI/CD Integration
+
+```yaml
+# GitHub Actions example
+- name: Publish Schemas
+  env:
+    APICURIO_API_KEY: ${{ secrets.APICURIO_API_KEY }}
+    APICURIO_URL: https://registry.prod.example.com
+  run: sbt apicurioPublish
+```
+
+### Inter-Service Dependencies
+
+**Service A** (produces events):
+```scala
+// Service A: catalog-svc
+apicurioGroupId := "com.example.catalog"
+// Schemas: src/main/schemas/CatalogItemCreated.avsc
+```
+
+**Service B** (consumes events):
+```scala
+// Service B: order-svc
+apicurioGroupId := "com.example.order"
+apicurioPullDependencies := Seq(
+  "com.example.catalog" % "CatalogItemCreated" % "latest"
+)
+// Pulled to: target/schemas/com/example/catalog/CatalogItemCreated.json
+```
+
+## Troubleshooting
+
+### "apicurioGroupId is not set"
+
+The plugin requires explicit group ID configuration. Add to your `build.sbt`:
+
+```scala
+apicurioGroupId := "com.example.myservice"
+```
+
+### "Artifact not found" when pulling
+
+Ensure the artifact exists in the registry and the group/artifact IDs are correct. Check:
+- Registry URL is correct
+- API key has read permissions
+- Artifact was previously published
+
+### Compatibility check failures
+
+If publishing fails due to compatibility:
+1. Review your compatibility level setting
+2. Check the schema changes against compatibility rules
+3. Consider using a less strict compatibility level (e.g., `NONE` for development)
+
+### Schemas not discovered
+
+Check that:
+- Schema files have supported extensions (`.avsc`, `.proto`, `.json`, `.yaml`, `.yml`)
+- `apicurioSchemaPaths` points to correct directories
+- Files are not in `.gitignore` or otherwise excluded
+
+## Development
+
+### Building the plugin
+
+```bash
+sbt compile
+```
+
+### Testing locally
+
+```bash
+sbt publishLocal
+```
+
+Then in another project:
+
+```scala
+// project/plugins.sbt
+addSbtPlugin("com.upstartcommerce" % "sbt-apicurio" % "0.1.0-SNAPSHOT")
+```
+
+## Requirements
+
+- SBT 1.x
+- Apicurio Registry 3.x
+- Scala 2.12 (for SBT plugin compatibility)
+
+## License
+
+Apache-2.0
+
+## Contributing
+
+Contributions welcome! Please open an issue or pull request.
+
+## Support
+
+For issues or questions, please open an issue on the project repository.

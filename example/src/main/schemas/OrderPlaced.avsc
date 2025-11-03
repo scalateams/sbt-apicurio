@@ -1,0 +1,53 @@
+{
+  "type": "record",
+  "name": "OrderPlaced",
+  "namespace": "com.example.myservice.events",
+  "doc": "Event emitted when an order is placed",
+  "fields": [
+    {
+      "name": "orderId",
+      "type": "string",
+      "doc": "Unique identifier for the order"
+    },
+    {
+      "name": "userId",
+      "type": "string",
+      "doc": "User who placed the order"
+    },
+    {
+      "name": "items",
+      "type": {
+        "type": "array",
+        "items": {
+          "type": "record",
+          "name": "OrderItem",
+          "fields": [
+            {
+              "name": "productId",
+              "type": "string"
+            },
+            {
+              "name": "quantity",
+              "type": "int"
+            },
+            {
+              "name": "price",
+              "type": "double"
+            }
+          ]
+        }
+      },
+      "doc": "Items in the order"
+    },
+    {
+      "name": "totalAmount",
+      "type": "double",
+      "doc": "Total amount of the order"
+    },
+    {
+      "name": "placedAt",
+      "type": "long",
+      "doc": "Timestamp when order was placed (epoch milliseconds)"
+    }
+  ]
+}
