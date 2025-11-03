@@ -6,6 +6,7 @@ import org.scalatest.{BeforeAndAfterAll, Tag}
 import sbt.util.Logger
 import java.io.File
 import scala.util.{Success, Failure}
+import org.scalateams.sbt.apicurio.ApicurioModels.ApicurioError
 
 object IntegrationTest extends Tag("org.scalateams.sbt.apicurio.IntegrationTest")
 
@@ -39,14 +40,14 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
       val client = new ApicurioClient(registryUrl, apiKey, testLogger)
       // Try a simple GET to see if it's up
       client.getArtifactMetadata(testGroupId, "non-existent-test") match {
-        case Failure(_: ApicurioNotFoundException) =>
+        case Left(_: ApicurioError.ArtifactNotFound) =>
           // 404 is expected, but means the service is reachable
           apicurioAvailable = true
-        case Success(_) =>
+        case Right(_) =>
           // Artifact exists somehow, but service is reachable
           apicurioAvailable = true
-        case Failure(ex) =>
-          println(s"Apicurio not available: ${ex.getMessage}")
+        case Left(err) =>
+          println(s"Apicurio not available: ${err.message}")
           println("Skipping integration tests. Set APICURIO_TEST_URL to run tests.")
           apicurioAvailable = false
       }
@@ -138,14 +139,15 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
         avroSchema.artifactType,
         avroSchema.content
       )
-      
-      result shouldBe a[Success[_]]
-      result.get.artifact.artifactId shouldBe artifactId
-      result.get.artifact.groupId shouldBe testGroupId
-      result.get.artifact.artifactType shouldBe "AVRO"
-      result.get.version.version shouldBe "1"
-      result.get.version.contentId should be > 0L
-      result.get.version.globalId should be > 0L
+
+      result shouldBe a[Right[_, _]]
+      val response = result.getOrElse(fail("Expected Right but got Left"))
+      response.artifact.artifactId shouldBe artifactId
+      response.artifact.groupId shouldBe testGroupId
+      response.artifact.artifactType shouldBe "AVRO"
+      response.version.version shouldBe "1"
+      response.version.contentId should be > 0L
+      response.version.globalId should be > 0L
     } finally {
       client.close()
     }
@@ -168,11 +170,12 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
         jsonSchema.artifactType,
         jsonSchema.content
       )
-      
-      result shouldBe a[Success[_]]
-      result.get.artifact.artifactId shouldBe artifactId
-      result.get.artifact.artifactType shouldBe "JSON"
-      result.get.version.version shouldBe "1"
+
+      result shouldBe a[Right[_, _]]
+      val response = result.getOrElse(fail("Expected Right but got Left"))
+      response.artifact.artifactId shouldBe artifactId
+      response.artifact.artifactType shouldBe "JSON"
+      response.version.version shouldBe "1"
     } finally {
       client.close()
     }
@@ -189,7 +192,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
     val artifactId = "TestOrder"
     
     try {
-      // Note: Protobuf schemas need to be sent as JSON-wrapped strings for Apicurio 3.x
+      // Note: Protobuf schemas are sent with application/x-protobuf content type
       // The content should be the raw proto file content
       val result = client.createArtifact(
         testGroupId,
@@ -197,10 +200,11 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
         protoSchema.artifactType,
         protoSchema.content
       )
-      
-      result shouldBe a[Success[_]]
-      result.get.artifact.artifactId shouldBe artifactId
-      result.get.artifact.artifactType shouldBe "PROTOBUF"
+
+      result shouldBe a[Right[_, _]]
+      val response = result.getOrElse(fail("Expected Right but got Left"))
+      response.artifact.artifactId shouldBe artifactId
+      response.artifact.artifactType shouldBe "PROTOBUF"
     } finally {
       client.close()
     }
@@ -223,10 +227,11 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
         openApiSchema.artifactType,
         openApiSchema.content
       )
-      
-      result shouldBe a[Success[_]]
-      result.get.artifact.artifactId shouldBe artifactId
-      result.get.artifact.artifactType shouldBe "OPENAPI"
+
+      result shouldBe a[Right[_, _]]
+      val response = result.getOrElse(fail("Expected Right but got Left"))
+      response.artifact.artifactId shouldBe artifactId
+      response.artifact.artifactType shouldBe "OPENAPI"
     } finally {
       client.close()
     }
@@ -241,11 +246,12 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
     
     try {
       val result = client.getArtifactMetadata(testGroupId, "TestUser")
-      
-      result shouldBe a[Success[_]]
-      result.get.artifactId shouldBe "TestUser"
-      result.get.groupId shouldBe testGroupId
-      result.get.artifactType shouldBe "AVRO"
+
+      result shouldBe a[Right[_, _]]
+      val metadata = result.getOrElse(fail("Expected Right but got Left"))
+      metadata.artifactId shouldBe "TestUser"
+      metadata.groupId shouldBe testGroupId
+      metadata.artifactType shouldBe "AVRO"
     } finally {
       client.close()
     }
@@ -258,10 +264,11 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
     
     try {
       val result = client.getVersionContent(testGroupId, "TestUser", "1")
-      
-      result shouldBe a[Success[_]]
-      result.get should include ("TestUser")
-      result.get should include ("com.example.test")
+
+      result shouldBe a[Right[_, _]]
+      val content = result.getOrElse(fail("Expected Right but got Left"))
+      content should include ("TestUser")
+      content should include ("com.example.test")
     } finally {
       client.close()
     }
@@ -274,11 +281,12 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
     
     try {
       val result = client.getLatestVersion(testGroupId, "TestUser")
-      
-      result shouldBe a[Success[_]]
-      result.get.version should not be empty
-      result.get.artifactId shouldBe "TestUser"
-      result.get.groupId shouldBe testGroupId
+
+      result shouldBe a[Right[_, _]]
+      val version = result.getOrElse(fail("Expected Right but got Left"))
+      version.version should not be empty
+      version.artifactId shouldBe "TestUser"
+      version.groupId shouldBe testGroupId
     } finally {
       client.close()
     }
@@ -292,13 +300,14 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
     
     try {
       val dependency = ApicurioModels.ApicurioDependency(testGroupId, "TestUser", "1")
-      
+
       val contentResult = client.getVersionContent(testGroupId, "TestUser", "1")
-      contentResult shouldBe a[Success[_]]
-      
-      val saveResult = SchemaFileUtils.saveSchema(outputDir, dependency, contentResult.get, testLogger)
+      contentResult shouldBe a[Right[_, _]]
+      val content = contentResult.getOrElse(fail("Expected Right but got Left"))
+
+      val saveResult = SchemaFileUtils.saveSchema(outputDir, dependency, content, testLogger)
       saveResult shouldBe a[Success[_]]
-      
+
       val savedFile = saveResult.get
       savedFile.exists() shouldBe true
       savedFile.getName shouldBe "TestUser.json"
@@ -314,9 +323,10 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
     
     try {
       val result = client.getVersionContent(testGroupId, "TestProduct", "latest")
-      
-      result shouldBe a[Success[_]]
-      result.get should include ("TestProduct")
+
+      result shouldBe a[Right[_, _]]
+      val content = result.getOrElse(fail("Expected Right but got Left"))
+      content should include ("TestProduct")
     } finally {
       client.close()
     }
@@ -337,10 +347,11 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
     
     try {
       val result = client.createVersion(testGroupId, "TestUser", modifiedContent)
-      
-      result shouldBe a[Success[_]]
-      result.get.artifactId shouldBe "TestUser"
-      result.get.version.toInt should be > 1
+
+      result shouldBe a[Right[_, _]]
+      val version = result.getOrElse(fail("Expected Right but got Left"))
+      version.artifactId shouldBe "TestUser"
+      version.version.toInt should be > 1
     } finally {
       client.close()
     }
@@ -363,7 +374,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
       // Publish all schemas (some may already exist, that's ok)
       val publishedArtifacts = schemas.map { schema =>
         val artifactId = SchemaFileUtils.extractArtifactId(schema)
-        
+
         val publishResult = client.publishSchema(
           testGroupId,
           artifactId,
@@ -371,19 +382,20 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
           schema.content,
           ApicurioModels.CompatibilityLevel.Backward
         )
-        
-        publishResult shouldBe a[Success[_]]
+
+        publishResult shouldBe a[Right[_, _]]
         artifactId
       }
-      
+
       // Pull all published schemas
       publishedArtifacts.foreach { artifactId =>
         val dependency = ApicurioModels.ApicurioDependency(testGroupId, artifactId, "latest")
         val contentResult = client.getVersionContent(dependency.groupId, dependency.artifactId, "latest")
-        
-        contentResult shouldBe a[Success[_]]
-        
-        val saveResult = SchemaFileUtils.saveSchema(outputDir, dependency, contentResult.get, testLogger)
+
+        contentResult shouldBe a[Right[_, _]]
+        val content = contentResult.getOrElse(fail("Expected Right but got Left"))
+
+        val saveResult = SchemaFileUtils.saveSchema(outputDir, dependency, content, testLogger)
         saveResult shouldBe a[Success[_]]
         saveResult.get.exists() shouldBe true
       }
@@ -398,6 +410,166 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
       
     } finally {
       client.close()
+    }
+  }
+
+  behavior of "ApicurioClient - Error Handling"
+
+  it should "return ArtifactNotFound error for non-existent artifact" taggedAs IntegrationTest in {
+    assumeApicurioAvailable()
+
+    val client = new ApicurioClient(registryUrl, apiKey, testLogger)
+
+    try {
+      val result = client.getArtifactMetadata(testGroupId, "NonExistentArtifact")
+
+      result shouldBe a[Left[_, _]]
+      result match {
+        case Left(ApicurioError.ArtifactNotFound(groupId, artifactId)) =>
+          groupId shouldBe testGroupId
+          artifactId shouldBe "NonExistentArtifact"
+        case _ => fail("Expected ArtifactNotFound error")
+      }
+    } finally {
+      client.close()
+    }
+  }
+
+  it should "return VersionNotFound error for non-existent version" taggedAs IntegrationTest in {
+    assumeApicurioAvailable()
+
+    val client = new ApicurioClient(registryUrl, apiKey, testLogger)
+
+    try {
+      val result = client.getVersionContent(testGroupId, "TestUser", "999")
+
+      result shouldBe a[Left[_, _]]
+      result match {
+        case Left(ApicurioError.VersionNotFound(groupId, artifactId, version)) =>
+          groupId shouldBe testGroupId
+          artifactId shouldBe "TestUser"
+          version shouldBe "999"
+        case _ => fail("Expected VersionNotFound error")
+      }
+    } finally {
+      client.close()
+    }
+  }
+
+  it should "return InvalidSchema error for malformed JSON" taggedAs IntegrationTest in {
+    assumeApicurioAvailable()
+
+    val client = new ApicurioClient(registryUrl, apiKey, testLogger)
+
+    try {
+      val invalidJson = "{invalid json"
+      val result = client.createArtifact(
+        testGroupId,
+        "InvalidSchema",
+        ApicurioModels.ArtifactType.JsonSchema,
+        invalidJson
+      )
+
+      result shouldBe a[Left[_, _]]
+      result match {
+        case Left(ApicurioError.InvalidSchema(reason)) =>
+          reason should include("parse")
+        case _ => fail("Expected InvalidSchema error")
+      }
+    } finally {
+      client.close()
+    }
+  }
+
+  behavior of "SchemaReferenceUtils - Reference Detection"
+
+  it should "detect no references in simple Avro schema" in {
+    val testResourcesDir = new File("src/test/resources/test-schemas")
+    val schemas = SchemaFileUtils.discoverSchemas(Seq(testResourcesDir), testLogger)
+    val avroSchema = schemas.find(_.file.getName == "TestUser.avsc").get
+    val artifactId = "TestUser"
+
+    val schemaWithRefs = SchemaReferenceUtils.detectReferences(avroSchema, artifactId, testLogger)
+
+    schemaWithRefs.artifactId shouldBe artifactId
+    schemaWithRefs.schema shouldBe avroSchema
+    // TestUser is a simple schema with primitive types only
+    schemaWithRefs.references shouldBe empty
+  }
+
+  it should "handle empty schema list in dependency ordering" in {
+    val result = SchemaReferenceUtils.orderSchemasByDependencies(List.empty, testLogger)
+
+    result shouldBe a[Right[_, _]]
+    result.getOrElse(fail("Expected Right")) shouldBe empty
+  }
+
+  it should "order schemas with dependencies correctly" in {
+    val testResourcesDir = new File("src/test/resources/test-schemas")
+    val schemas = SchemaFileUtils.discoverSchemas(Seq(testResourcesDir), testLogger)
+
+    val schemasWithRefs = schemas.map { schema =>
+      val artifactId = SchemaFileUtils.extractArtifactId(schema)
+      SchemaReferenceUtils.detectReferences(schema, artifactId, testLogger)
+    }.toList
+
+    val result = SchemaReferenceUtils.orderSchemasByDependencies(schemasWithRefs, testLogger)
+
+    result shouldBe a[Right[_, _]]
+    val ordered = result.getOrElse(fail("Expected Right"))
+    ordered.size shouldBe schemasWithRefs.size
+  }
+
+  behavior of "ApicurioClient - Compatibility Checking"
+
+  it should "check compatibility for compatible schema changes" taggedAs IntegrationTest in {
+    assumeApicurioAvailable()
+
+    val client = new ApicurioClient(registryUrl, apiKey, testLogger)
+    val testResourcesDir = new File("src/test/resources/test-schemas")
+    val schemas = SchemaFileUtils.discoverSchemas(Seq(testResourcesDir), testLogger)
+
+    try {
+      val avroSchema = schemas.find(_.file.getName == "TestUser.avsc").get
+      // Add a new optional field - backward compatible
+      val compatibleContent = avroSchema.content.replace(
+        "\"fields\":",
+        "\"fields\": [{\"name\": \"newField\", \"type\": [\"null\", \"string\"], \"default\": null},"
+      )
+
+      val result = client.checkCompatibility(
+        testGroupId,
+        "TestUser",
+        compatibleContent,
+        ApicurioModels.CompatibilityLevel.Backward
+      )
+
+      result shouldBe a[Right[_, _]]
+      // Result may be true or false depending on whether the artifact exists and compatibility rules
+      result.isRight shouldBe true
+    } finally {
+      client.close()
+    }
+  }
+
+  behavior of "ApicurioModels - Error Messages"
+
+  it should "provide clear error messages for all error types" in {
+    val errors = List(
+      ApicurioError.ArtifactNotFound("group1", "artifact1"),
+      ApicurioError.VersionNotFound("group1", "artifact1", "v1"),
+      ApicurioError.IncompatibleSchema("group1", "artifact1", "test reason"),
+      ApicurioError.CircularDependency(Set("schema1", "schema2")),
+      ApicurioError.InvalidSchema("bad format"),
+      ApicurioError.HttpError(404, "Not found"),
+      ApicurioError.NetworkError(new Exception("Connection failed")),
+      ApicurioError.ParseError("Invalid JSON"),
+      ApicurioError.ConfigurationError("Missing config")
+    )
+
+    errors.foreach { error =>
+      error.message should not be empty
+      error.message should not include ("null")
     }
   }
 }
