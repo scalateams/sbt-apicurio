@@ -1,6 +1,6 @@
 name := "sbt-apicurio"
-organization := "com.upstartcommerce"
-version := "0.1.0-SNAPSHOT"
+organization := "org.scalateams"
+// Version managed by sbt-ci-release via git tags
 
 sbtPlugin := true
 
@@ -18,6 +18,28 @@ libraryDependencies ++= Seq(
 // Plugin metadata
 description := "SBT plugin for Apicurio Schema Registry integration"
 licenses := Seq("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0"))
+
+// Publishing configuration for Maven Central via Sonatype
+homepage := Some(url("https://github.com/scalateams/sbt-apicurio"))
+scmInfo := Some(
+  ScmInfo(
+    url("https://github.com/scalateams/sbt-apicurio"),
+    "scm:git:git@github.com:scalateams/sbt-apicurio.git"
+  )
+)
+developers := List(
+  Developer(
+    id = "scalateams",
+    name = "ScalaTeams",
+    email = "team@scalateams.org",
+    url = url("https://github.com/scalateams")
+  )
+)
+
+// Sonatype repository configuration
+publishMavenStyle := true
+sonatypeCredentialHost := "s01.oss.sonatype.org"
+sonatypeRepository := "https://s01.oss.sonatype.org/service/local"
 
 scalacOptions ++= Seq(
   "-encoding", "UTF-8",

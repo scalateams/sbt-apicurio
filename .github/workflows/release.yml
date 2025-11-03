@@ -1,0 +1,39 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    name: Release to Maven Central
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 11
+          cache: sbt
+
+      - name: Import GPG key
+        run: echo "$PGP_SECRET" | base64 --decode | gpg --batch --import
+        env:
+          PGP_SECRET: ${{ secrets.PGP_SECRET }}
+
+      - name: Release
+        run: sbt ci-release
+        env:
+          PGP_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}
+          PGP_SECRET: ${{ secrets.PGP_SECRET }}
+          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
+          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}

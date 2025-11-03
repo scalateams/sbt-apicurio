@@ -1,5 +1,5 @@
 name := "sbt-apicurio-example"
-organization := "com.example"
+organization := "org.scalateams.example"
 version := "0.1.0-SNAPSHOT"
 
 scalaVersion := "2.13.12"

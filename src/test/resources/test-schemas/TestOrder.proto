@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package com.example.test;
+
+message TestOrder {
+  string order_id = 1;
+  string customer_id = 2;
+  repeated OrderItem items = 3;
+  double total_amount = 4;
+  OrderStatus status = 5;
+  int64 created_at = 6;
+}
+
+message OrderItem {
+  string product_id = 1;
+  int32 quantity = 2;
+  double unit_price = 3;
+}
+
+enum OrderStatus {
+  PENDING = 0;
+  CONFIRMED = 1;
+  SHIPPED = 2;
+  DELIVERED = 3;
+  CANCELLED = 4;
+}
