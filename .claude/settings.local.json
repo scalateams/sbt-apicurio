@@ -1,7 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "WebFetch(domain:www.apicur.io)"
+      "WebFetch(domain:www.apicur.io)",
+      "Bash(sbt compile)",
+      "Bash(sbt clean compile:*)",
+      "Bash(awk:*)",
+      "Bash(sbt publishLocal)",
+      "WebFetch(domain:github.com)"
     ],
     "deny": [],
     "ask": []

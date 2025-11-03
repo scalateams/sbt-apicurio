@@ -1,6 +1,6 @@
-package com.upstartcommerce.sbt.apicurio
+package org.scalateams.sbt.apicurio
 
-import com.upstartcommerce.sbt.apicurio.ApicurioModels._
+import org.scalateams.sbt.apicurio.ApicurioModels._
 import sbt._
 import sbt.util.Logger
 
