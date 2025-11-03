@@ -6,22 +6,41 @@ This document details the complete process for publishing version 0.1.0 of sbt-a
 
 These steps only need to be done once by a project maintainer:
 
-### 1. Sonatype Account Setup
+### 1. Sonatype Central Portal Account Setup
+
+**Note:** Sonatype has migrated from JIRA to their new Central Portal system.
 
 ```bash
-# 1. Create a Sonatype JIRA account
-# Visit: https://issues.sonatype.org/secure/Signup!default.jspa
+# 1. Create a Sonatype Central Portal account
+# Visit: https://central.sonatype.com/
 
-# 2. Create a ticket to claim the org.scalateams groupId
-# Visit: https://issues.sonatype.org/secure/CreateIssue.jspa
-# - Project: Community Support - Open Source Project Repository Hosting (OSSRH)
-# - Issue Type: New Project
-# - Group Id: org.scalateams
-# - Project URL: https://github.com/scalateams/sbt-apicurio
-# - SCM URL: https://github.com/scalateams/sbt-apicurio.git
+# 2. Sign up with your account provider:
+# - GitHub (recommended for open source projects)
+# - Google
+# - Or create a username/password account
+
+# 3. After signing in, register your namespace:
+# - Go to: https://central.sonatype.com/publishing/namespaces
+# - Click "Add Namespace"
+# - Enter: org.scalateams
+# - Verify ownership via one of these methods:
+#   a. GitHub repository: Add TXT record to https://github.com/scalateams/sbt-apicurio
+#   b. DNS verification: Add TXT record to your domain
+#   c. GitHub organization: Verify org ownership
 ```
 
-You'll need to verify domain ownership (or they'll accept GitHub org ownership). This typically takes 1-2 business days.
+**Verification Methods:**
+
+**Option A: GitHub Repository Verification (Easiest for OSS)**
+1. Go to https://github.com/scalateams/sbt-apicurio/settings
+2. Add the verification code provided by Central Portal to repository description or README
+3. Wait for automatic verification (~15 minutes)
+
+**Option B: DNS Verification**
+1. Add TXT record to `scalateams.org` domain (if you own it)
+2. Record format: `_sonatype-central-verification=<verification-code>`
+
+**Timeline:** Verification is usually instant to 1 hour (much faster than old JIRA process!)
 
 ### 2. Generate GPG Key for Signing
 
@@ -51,27 +70,38 @@ gpg --keyserver hkps://keyserver.ubuntu.com --send-keys ABCD1234ABCD1234ABCD1234
 
 **Important:** Save your passphrase securely - you'll need it for GitHub secrets.
 
-### 3. Add GitHub Secrets
+### 3. Generate Sonatype Tokens
+
+**New Central Portal uses token-based authentication instead of username/password:**
+
+1. Log in to Central Portal: https://central.sonatype.com/
+2. Click your profile icon (top right)
+3. Select "View Account"
+4. Go to "Generate User Token"
+5. Click "Generate Token"
+6. **Copy both the username and password tokens** (these are NOT your login credentials)
+
+**Important:** Save these tokens securely - you can't view them again!
+
+### 4. Add GitHub Secrets
 
 Go to: https://github.com/scalateams/sbt-apicurio/settings/secrets/actions
 
 Add these four secrets:
 
-- **`SONATYPE_USERNAME`** - Your Sonatype JIRA username
-- **`SONATYPE_PASSWORD`** - Your Sonatype JIRA password
+- **`SONATYPE_USERNAME`** - The generated username token from Central Portal (e.g., `abCD1234`)
+- **`SONATYPE_PASSWORD`** - The generated password token from Central Portal
 - **`PGP_SECRET`** - Contents of `private-key-base64.txt` (the base64 encoded GPG key)
 - **`PGP_PASSPHRASE`** - The passphrase you set when creating the GPG key
 
-### 4. Wait for Sonatype Approval
+### 5. Verify Namespace is Registered
 
-After creating the JIRA ticket, Sonatype will:
-1. Review your request
-2. May ask you to verify GitHub org ownership
-3. Approve access to `org.scalateams` groupId
+Once verification completes:
+1. Go to: https://central.sonatype.com/publishing/namespaces
+2. Verify `org.scalateams` shows status: **Verified**
+3. You're now ready to publish!
 
-**Timeline:** 1-2 business days
-
-You'll receive an email notification when approved.
+**Timeline:** Usually instant to 1 hour (much faster than the old JIRA process!)
 
 ## Release v0.1.0 - Step-by-Step
 
@@ -159,15 +189,14 @@ The GitHub Actions workflow will automatically:
 
 After the GitHub Actions workflow completes successfully:
 
-**1. Check Sonatype (available within ~10 minutes)**
+**1. Check Central Portal (available within ~10 minutes)**
 
+Visit: https://central.sonatype.com/
+
+Or check the S01 repository:
 ```bash
-# Sonatype Releases Repository
 curl -I https://s01.oss.sonatype.org/content/repositories/releases/org/scalateams/sbt-apicurio_2.12_1.0/0.1.0/
 ```
-
-Or visit:
-- https://s01.oss.sonatype.org/content/repositories/releases/org/scalateams/sbt-apicurio_2.12_1.0/0.1.0/
 
 **2. Check Maven Central (may take 2-4 hours to sync)**
 
@@ -320,16 +349,19 @@ Error: Unauthorized (401)
 ```
 
 **Solution:**
-- Verify `SONATYPE_USERNAME` and `SONATYPE_PASSWORD` are correct
-- Ensure your Sonatype account is activated
-- Check that you have access to `org.scalateams` groupId
+- Verify `SONATYPE_USERNAME` and `SONATYPE_PASSWORD` contain the **generated tokens** (not your login credentials!)
+- Re-generate tokens in Central Portal if needed: https://central.sonatype.com/account
+- Ensure your namespace is verified
 
-#### GroupId Not Approved
+#### Namespace Not Verified
 ```
 Error: 403 Forbidden - Not authorized for groupId: org.scalateams
 ```
 
-**Solution:** Wait for Sonatype JIRA ticket approval (step 1 of prerequisites).
+**Solution:**
+- Check namespace verification status: https://central.sonatype.com/publishing/namespaces
+- Ensure `org.scalateams` shows **Verified** status
+- Complete the verification process (GitHub or DNS)
 
 #### Tests Failed
 ```
@@ -379,8 +411,9 @@ sbt ci-release
 ## Timeline Summary
 
 **One-Time Setup:**
-- Sonatype account creation: 5 minutes
-- Sonatype groupId approval: 1-2 business days
+- Sonatype Central Portal account: 5 minutes
+- Namespace verification: Instant to 1 hour (with GitHub verification)
+- Token generation: 2 minutes
 - GPG key generation: 10 minutes
 - GitHub secrets setup: 5 minutes
 
@@ -390,7 +423,7 @@ sbt ci-release
 - Sonatype availability: ~10 minutes after build
 - Maven Central sync: 2-4 hours
 
-**Total time for first release:** 2-3 days (mostly waiting for Sonatype)
+**Total time for first release:** ~1-2 hours (much faster with new Central Portal!)
 
 **Subsequent releases:** ~5 minutes (just push a tag!)
 
@@ -402,7 +435,8 @@ Before creating the v0.1.0 tag:
 - [ ] Feature branch merged to main
 - [ ] Main branch is up to date
 - [ ] CI is green on main branch
-- [ ] Sonatype account approved (one-time)
+- [ ] Central Portal namespace verified (one-time)
+- [ ] Sonatype tokens generated (one-time)
 - [ ] GPG keys configured (one-time)
 - [ ] GitHub secrets added (one-time)
 - [ ] Documentation is up to date
@@ -448,8 +482,25 @@ git push origin v0.2.0
 
 ## Resources
 
+- [Sonatype Central Portal](https://central.sonatype.com/) - **New** publishing portal (replaces JIRA)
+- [Central Portal Publishing Guide](https://central.sonatype.org/publish/publish-portal-upload/) - Official documentation
+- [Central Portal Namespaces](https://central.sonatype.com/publishing/namespaces) - Manage your namespaces
 - [sbt-ci-release documentation](https://github.com/sbt/sbt-ci-release)
-- [Sonatype OSSRH Guide](https://central.sonatype.org/publish/publish-guide/)
 - [Semantic Versioning](https://semver.org/)
 - [GPG Documentation](https://www.gnupg.org/documentation/)
 - [GitHub Actions Documentation](https://docs.github.com/en/actions)
+
+## What Changed from Old OSSRH?
+
+**Old Process (JIRA):**
+- ❌ Create JIRA account
+- ❌ File JIRA ticket
+- ❌ Wait 1-2 days for approval
+- ❌ Manual back-and-forth communication
+
+**New Process (Central Portal):**
+- ✅ Sign in with GitHub/Google
+- ✅ Register namespace directly
+- ✅ Instant/automatic verification (with GitHub)
+- ✅ Generate tokens in seconds
+- ✅ Much faster and more streamlined!

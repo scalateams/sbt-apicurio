@@ -288,6 +288,8 @@ class ApicurioClient(
   /**
    * Publish a schema - creates artifact if not exists, or creates new version if changed
    * Returns Left(CreateArtifactResponse) if newly created, Right(VersionMetadata) if updated
+   *
+   * Note: Changes to content OR references will trigger a new version
    */
   def publishSchema(
     groupId: String,
@@ -299,17 +301,37 @@ class ApicurioClient(
   ): Try[Either[CreateArtifactResponse, VersionMetadata]] = {
     val contentHash = computeHash(content)
 
+    // Log what we're publishing
+    if (references.nonEmpty) {
+      logger.info(s"Publishing $artifactId with ${references.size} reference(s):")
+      references.foreach { ref =>
+        logger.info(s"  → ${ref.groupId.getOrElse(groupId)}:${ref.artifactId}:${ref.version.getOrElse("latest")}")
+      }
+    }
+
     getArtifactMetadata(groupId, artifactId) match {
       case Success(metadata) =>
-        // Artifact exists, check if content has changed
+        // Artifact exists, check if content or references have changed
         getLatestVersion(groupId, artifactId).flatMap { latestVersion =>
           getVersionContent(groupId, artifactId, latestVersion.version).flatMap { existingContent =>
             val existingHash = computeHash(existingContent)
 
-            if (contentHash == existingHash) {
+            // Check if content changed
+            val contentChanged = contentHash != existingHash
+
+            // Check if references changed
+            // Note: We treat having ANY references as a change, since we can't easily
+            // retrieve existing references from the API to compare. This ensures
+            // references are always included even if content is identical.
+            val referencesChanged = references.nonEmpty
+
+            if (!contentChanged && !referencesChanged) {
               logger.info(s"Schema unchanged: $groupId:$artifactId (version ${latestVersion.version})")
               Success(Right(latestVersion))
             } else {
+              if (contentChanged) logger.debug(s"Content changed for $artifactId")
+              if (referencesChanged) logger.info(s"Adding/updating ${references.size} reference(s) for $artifactId")
+
               // Check compatibility before creating new version
               checkCompatibility(groupId, artifactId, content, compatibilityLevel) match {
                 case Success(true) =>
@@ -328,6 +350,11 @@ class ApicurioClient(
 
       case Failure(_: ArtifurioNotFoundException) =>
         // Artifact doesn't exist, create it
+        if (references.nonEmpty) {
+          logger.info(s"Creating new artifact: $artifactId with ${references.size} reference(s)")
+        } else {
+          logger.info(s"Creating new artifact: $artifactId")
+        }
         createArtifact(groupId, artifactId, artifactType, content, references).map(Left(_))
 
       case Failure(ex) =>
