@@ -9,6 +9,8 @@ An SBT AutoPlugin for integrating with [Apicurio Schema Registry 3.x](https://ww
 ## Features
 
 - **Schema Publishing**: Automatically detect and publish changed schemas to Apicurio Registry
+- **Schema References**: Automatically detect and handle nested/dependent schemas across all formats
+- **Dependency Ordering**: Publish schemas in correct dependency order (dependencies first)
 - **Change Detection**: Hash-based comparison to only publish when schemas have changed
 - **Compatibility Checking**: Validate schema compatibility before publishing
 - **Schema Dependencies**: Pull schemas from registry before compilation
@@ -243,6 +245,47 @@ apicurioPullOutputDir := sourceDirectory.value / "main" / "external-schemas"
 | `apicurioPull` | Pull schema dependencies from registry |
 | `apicurioDiscoverSchemas` | Discover and list all schema files |
 | `apicurioValidateSettings` | Validate plugin configuration |
+
+## Schema References (Nested Schemas)
+
+The plugin automatically detects and handles schema references for nested/dependent schemas:
+
+```scala
+// Schemas with dependencies
+src/main/schemas/
+├── Address.avsc         // No dependencies
+├── Customer.avsc        // References Address
+└── Order.avsc           // References Customer
+```
+
+**What the plugin does:**
+
+1. **Detects references** in Avro, JSON Schema, and Protobuf schemas
+2. **Orders schemas** by dependencies (publishes Address → Customer → Order)
+3. **Includes reference metadata** in Apicurio API requests
+4. **Validates** for circular dependencies
+
+**Output:**
+
+```bash
+$ sbt apicurioPublish
+
+Schema dependencies detected:
+  Customer depends on: Address
+  Order depends on: Customer
+Publishing in dependency order: Address → Customer → Order
+✓ Created: Address (AVRO) version 1
+✓ Created: Customer (AVRO) version 1
+✓ Created: Order (AVRO) version 1
+```
+
+**Reference formats:**
+
+- **Avro**: Record type references in fields
+- **JSON Schema**: `$ref` with `apicurio://groupId/artifactId` URIs
+- **Protobuf**: `import "path/to/schema.proto"` statements
+
+See [SCHEMA_REFERENCES.md](SCHEMA_REFERENCES.md) for complete documentation.
 
 ## Complete Example
 

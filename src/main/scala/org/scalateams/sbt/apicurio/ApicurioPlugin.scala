@@ -322,19 +322,61 @@ object ApicurioPlugin extends AutoPlugin {
               log.info(s"Group ID: $validGroupId")
               log.info(s"Compatibility Level: ${compatLevel.value}")
 
+              // Detect references in all schemas
+              log.debug("Detecting schema references...")
+              val schemasWithRefs = schemas.map { schema =>
+                val artifactId = SchemaFileUtils.extractArtifactId(schema)
+                SchemaReferenceUtils.detectReferences(schema, artifactId, log)
+              }.toList
+
+              // Check for references and log
+              val hasReferences = schemasWithRefs.exists(_.references.nonEmpty)
+              if (hasReferences) {
+                log.info("Schema dependencies detected:")
+                schemasWithRefs.filter(_.references.nonEmpty).foreach { s =>
+                  log.info(s"  ${s.artifactId} depends on: ${s.references.flatMap(_.artifactId).mkString(", ")}")
+                }
+              }
+
+              // Order schemas by dependencies
+              val orderedSchemas: List[SchemaReferenceUtils.SchemaWithReferences] = SchemaReferenceUtils.orderSchemasByDependencies(schemasWithRefs, log) match {
+                case Success(ordered) =>
+                  if (hasReferences) {
+                    log.info(s"Publishing in dependency order: ${ordered.map(_.artifactId).mkString(" → ")}")
+                  }
+                  ordered
+                case Failure(ex) =>
+                  log.warn(s"Could not order schemas by dependencies: ${ex.getMessage}")
+                  log.warn("Publishing in discovery order (may fail if dependencies not published)")
+                  schemasWithRefs
+              }
+
+              // Create schema map for reference resolution
+              val schemaMap = orderedSchemas.map(s => s.artifactId -> s).toMap
+
               var published = 0
               var unchanged = 0
               var failed = 0
 
-              schemas.foreach { schema =>
-                val artifactId = SchemaFileUtils.extractArtifactId(schema)
+              orderedSchemas.foreach { schemaWithRefs =>
+                val artifactId = schemaWithRefs.artifactId
+                val schema = schemaWithRefs.schema
+
+                // Resolve references to ContentReference objects
+                val refs = SchemaReferenceUtils.resolveReferences(
+                  schemaWithRefs.references,
+                  validGroupId,
+                  schemaMap,
+                  log
+                )
 
                 client.publishSchema(
                   validGroupId,
                   artifactId,
                   schema.artifactType,
                   schema.content,
-                  compatLevel
+                  compatLevel,
+                  refs
                 ) match {
                   case Success(Left(createResponse)) =>
                     // New artifact created - extract version info from response
