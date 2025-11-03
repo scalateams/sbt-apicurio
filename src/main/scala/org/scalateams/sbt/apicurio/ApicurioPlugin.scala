@@ -1,6 +1,6 @@
-package com.upstartcommerce.sbt.apicurio
+package org.scalateams.sbt.apicurio
 
-import com.upstartcommerce.sbt.apicurio.ApicurioModels._
+import org.scalateams.sbt.apicurio.ApicurioModels._
 import sbt.Keys._
 import sbt._
 
@@ -26,20 +26,29 @@ object ApicurioPlugin extends AutoPlugin {
     val apicurioDiscoverSchemas = taskKey[Seq[SchemaFile]]("Discover all schema files")
     val apicurioValidateSettings = taskKey[Unit]("Validate Apicurio plugin settings")
 
-    // Implicits for dependency DSL
-    implicit class ApicurioDependencyOps(val groupId: String) extends AnyVal {
-      def %(artifactId: String): ApicurioDependencyBuilder =
-        ApicurioDependencyBuilder(groupId, artifactId)
-    }
-
-    case class ApicurioDependencyBuilder(groupId: String, artifactId: String) {
-      def %(version: String): ApicurioDependency =
-        ApicurioDependency(groupId, artifactId, version)
-    }
-
     // Re-export models for easy access
     val CompatibilityLevel = ApicurioModels.CompatibilityLevel
     type CompatibilityLevel = ApicurioModels.CompatibilityLevel
+
+    /**
+     * Helper method to create schema dependency declarations without operator conflicts.
+     *
+     * Use this method instead of the % operator to avoid conflicts with SBT's built-in operators:
+     *
+     * {{{
+     * apicurioPullDependencies := Seq(
+     *   schema("com.example.catalog", "CatalogItemCreated", "latest"),
+     *   schema("com.example.tenant", "TenantCreated", "3")
+     * )
+     * }}}
+     *
+     * @param groupId Group ID of the schema (e.g., "com.example.catalog")
+     * @param artifactId Artifact ID / schema name (e.g., "CatalogItemCreated")
+     * @param version Version string or "latest"
+     * @return ApicurioDependency for use in apicurioPullDependencies
+     */
+    def schema(groupId: String, artifactId: String, version: String): ApicurioDependency =
+      ApicurioDependency(groupId, artifactId, version)
   }
 
   import autoImport._
@@ -152,8 +161,9 @@ object ApicurioPlugin extends AutoPlugin {
                   schema.content,
                   compatLevel
                 ) match {
-                  case Success(Left(metadata)) =>
-                    log.info(s"Created artifact: $artifactId (${schema.artifactType.value})")
+                  case Success(Left(createResponse)) =>
+                    // New artifact created - extract version info from response
+                    log.info(s"Created artifact: $artifactId (${schema.artifactType.value}) version ${createResponse.version.version}")
                     published += 1
                   case Success(Right(version)) =>
                     if (version.version == "1") {

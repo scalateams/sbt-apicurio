@@ -1,0 +1,65 @@
+# Mergify configuration
+# See https://docs.mergify.com/configuration/
+
+pull_request_rules:
+  # Auto-merge Scala Steward PRs for patch updates
+  - name: Auto-merge Scala Steward patch updates
+    conditions:
+      - author=scala-steward
+      - status-success=CI
+      - "#approved-reviews-by>=0"
+      - "#changes-requested-reviews-by=0"
+      - title~=^Update .* from .* to .*\.\d+$
+    actions:
+      merge:
+        method: merge
+        
+  # Label Scala Steward PRs
+  - name: Label Scala Steward PRs
+    conditions:
+      - author=scala-steward
+    actions:
+      label:
+        add:
+          - dependencies
+          - scala-steward
+
+  # Auto-merge minor updates with approval
+  - name: Auto-merge Scala Steward minor updates with approval  
+    conditions:
+      - author=scala-steward
+      - status-success=CI
+      - "#approved-reviews-by>=1"
+      - "#changes-requested-reviews-by=0"
+    actions:
+      merge:
+        method: merge
+
+  # Auto-merge Dependabot PRs for patch updates
+  - name: Auto-merge Dependabot patch updates
+    conditions:
+      - author=dependabot[bot]
+      - status-success=CI
+      - "#approved-reviews-by>=0"
+      - "#changes-requested-reviews-by=0"
+      - title~=^Bump .* from .* to .*\.\d+$
+    actions:
+      merge:
+        method: merge
+
+  # Label Dependabot PRs
+  - name: Label Dependabot PRs
+    conditions:
+      - author=dependabot[bot]
+    actions:
+      label:
+        add:
+          - dependencies
+          - dependabot
+
+  # Delete head branch after merge
+  - name: Delete head branch after merge
+    conditions:
+      - merged
+    actions:
+      delete_head_branch: {}

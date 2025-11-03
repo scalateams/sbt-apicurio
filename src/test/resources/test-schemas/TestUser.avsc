@@ -1,0 +1,34 @@
+{
+  "type": "record",
+  "name": "TestUser",
+  "namespace": "com.example.test",
+  "doc": "Test user schema for Avro",
+  "fields": [
+    {
+      "name": "id",
+      "type": "string",
+      "doc": "Unique user identifier"
+    },
+    {
+      "name": "username",
+      "type": "string",
+      "doc": "Username"
+    },
+    {
+      "name": "email",
+      "type": "string",
+      "doc": "User email address"
+    },
+    {
+      "name": "createdAt",
+      "type": "long",
+      "doc": "Creation timestamp"
+    },
+    {
+      "name": "isActive",
+      "type": "boolean",
+      "default": true,
+      "doc": "Whether the user is active"
+    }
+  ]
+}
