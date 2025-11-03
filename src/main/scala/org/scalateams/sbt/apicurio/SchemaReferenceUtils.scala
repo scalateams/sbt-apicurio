@@ -6,7 +6,6 @@ import io.circe.Json
 import sbt.util.Logger
 
 import scala.collection.mutable
-import scala.util.Try
 import scala.util.matching.Regex
 
 /**
