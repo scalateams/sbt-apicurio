@@ -29,6 +29,9 @@ jobs:
           java-version: ${{ matrix.java }}
           cache: sbt
 
+      - name: Setup sbt
+        uses: sbt/setup-sbt@v1
+
       - name: Compile
         run: sbt ++${{ matrix.scala }} compile
 
@@ -56,6 +59,9 @@ jobs:
           distribution: temurin
           java-version: 11
           cache: sbt
+
+      - name: Setup sbt
+        uses: sbt/setup-sbt@v1
 
       - name: Publish local
         run: sbt publishLocal
