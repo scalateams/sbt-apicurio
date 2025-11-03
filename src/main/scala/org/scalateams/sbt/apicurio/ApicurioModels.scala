@@ -186,4 +186,59 @@ object ApicurioModels {
   object CompatibilityCheckResult {
     implicit val decoder: Decoder[CompatibilityCheckResult] = deriveDecoder
   }
+
+  /**
+   * Functional error types for Apicurio operations.
+   * Using Either[ApicurioError, T] instead of Try[T] provides:
+   * - Type safety: All errors are known at compile time
+   * - Composability: Easy to chain operations with flatMap/map
+   * - Explicit error handling: No hidden exceptions
+   * - Better error messages: Structured error information
+   */
+  sealed trait ApicurioError {
+    def message: String
+  }
+
+  object ApicurioError {
+    final case class ArtifactNotFound(groupId: String, artifactId: String) extends ApicurioError {
+      def message: String = s"Artifact not found: $groupId:$artifactId"
+    }
+
+    final case class VersionNotFound(groupId: String, artifactId: String, version: String) extends ApicurioError {
+      def message: String = s"Version not found: $groupId:$artifactId:$version"
+    }
+
+    final case class IncompatibleSchema(groupId: String, artifactId: String, reason: String) extends ApicurioError {
+      def message: String = s"Schema is not compatible with existing versions: $groupId:$artifactId - $reason"
+    }
+
+    final case class CircularDependency(schemas: Set[String]) extends ApicurioError {
+      def message: String = s"Circular dependency detected in schemas: ${schemas.mkString(", ")}"
+    }
+
+    final case class InvalidSchema(reason: String) extends ApicurioError {
+      def message: String = s"Invalid schema: $reason"
+    }
+
+    final case class HttpError(statusCode: Int, body: String) extends ApicurioError {
+      def message: String = s"HTTP error $statusCode: $body"
+    }
+
+    final case class NetworkError(cause: Throwable) extends ApicurioError {
+      def message: String = s"Network error: ${cause.getMessage}"
+    }
+
+    final case class ParseError(reason: String) extends ApicurioError {
+      def message: String = s"Parse error: $reason"
+    }
+
+    final case class ConfigurationError(reason: String) extends ApicurioError {
+      def message: String = s"Configuration error: $reason"
+    }
+  }
+
+  /**
+   * Type alias for Either-based results
+   */
+  type ApicurioResult[T] = Either[ApicurioError, T]
 }

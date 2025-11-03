@@ -265,7 +265,7 @@ object ApicurioPlugin extends AutoPlugin {
                 val version = if (dep.version == "latest") "latest" else dep.version
 
                 client.getVersionContent(dep.groupId, dep.artifactId, version) match {
-                  case Success(content) =>
+                  case Right(content) =>
                     SchemaFileUtils.saveSchema(outputDir, dep, content, log) match {
                       case Success(file) =>
                         log.info(s"✓ Pulled: ${dep.groupId}:${dep.artifactId}:${dep.version}")
@@ -274,8 +274,8 @@ object ApicurioPlugin extends AutoPlugin {
                         log.error(s"✗ Failed to save schema ${dep.groupId}:${dep.artifactId}: ${ex.getMessage}")
                         None
                     }
-                  case Failure(ex) =>
-                    log.error(s"✗ Failed to pull schema ${dep.groupId}:${dep.artifactId}:${dep.version}: ${ex.getMessage}")
+                  case Left(err) =>
+                    log.error(s"✗ Failed to pull schema ${dep.groupId}:${dep.artifactId}:${dep.version}: ${err.message}")
                     None
                 }
               }
@@ -340,13 +340,13 @@ object ApicurioPlugin extends AutoPlugin {
 
               // Order schemas by dependencies
               val orderedSchemas: List[SchemaReferenceUtils.SchemaWithReferences] = SchemaReferenceUtils.orderSchemasByDependencies(schemasWithRefs, log) match {
-                case Success(ordered) =>
+                case Right(ordered) =>
                   if (hasReferences) {
                     log.info(s"Publishing in dependency order: ${ordered.map(_.artifactId).mkString(" → ")}")
                   }
                   ordered
-                case Failure(ex) =>
-                  log.warn(s"Could not order schemas by dependencies: ${ex.getMessage}")
+                case Left(err) =>
+                  log.warn(s"Could not order schemas by dependencies: ${err.message}")
                   log.warn("Publishing in discovery order (may fail if dependencies not published)")
                   schemasWithRefs
               }
@@ -403,13 +403,13 @@ object ApicurioPlugin extends AutoPlugin {
                   compatLevel,
                   refs
                 ) match {
-                  case Success(Left(createResponse)) =>
+                  case Right(Left(createResponse)) =>
                     // New artifact created - track the version
                     val version = createResponse.version.version
                     publishedVersions(artifactId) = version
                     log.info(s"✓ Created: $artifactId (${schema.artifactType.value}) version $version")
                     published += 1
-                  case Success(Right(versionMeta)) =>
+                  case Right(Right(versionMeta)) =>
                     // New version created or existing version - track it
                     publishedVersions(artifactId) = versionMeta.version
                     if (versionMeta.version == "1") {
@@ -419,19 +419,23 @@ object ApicurioPlugin extends AutoPlugin {
                       log.info(s"✓ Updated: $artifactId version ${versionMeta.version}")
                       published += 1
                     }
-                  case Failure(_: ApicurioException) if unchanged == 0 =>
+                  case Left(_: ApicurioError.ArtifactNotFound) if unchanged == 0 =>
+                    // This shouldn't happen but handle gracefully
+                    log.error(s"✗ Failed: $artifactId - Unexpected artifact not found error")
+                    failed += 1
+                  case Left(_: ApicurioError.IncompatibleSchema) if unchanged == 0 =>
                     // Schema unchanged - still need to track the version for references
                     // Fetch the current version from the registry
                     client.getLatestVersion(validGroupId, artifactId) match {
-                      case Success(versionMeta) =>
+                      case Right(versionMeta) =>
                         publishedVersions(artifactId) = versionMeta.version
                         log.debug(s"- Unchanged: $artifactId (version ${versionMeta.version})")
-                      case Failure(_) =>
+                      case Left(_) =>
                         log.debug(s"- Unchanged: $artifactId")
                     }
                     unchanged += 1
-                  case Failure(ex) =>
-                    log.error(s"✗ Failed: $artifactId - ${ex.getMessage}")
+                  case Left(err) =>
+                    log.error(s"✗ Failed: $artifactId - ${err.message}")
                     failed += 1
                 }
               }

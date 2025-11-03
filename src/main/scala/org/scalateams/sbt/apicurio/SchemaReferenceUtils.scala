@@ -6,7 +6,7 @@ import io.circe.Json
 import sbt.util.Logger
 
 import scala.collection.mutable
-import scala.util.{Try, Success, Failure}
+import scala.util.Try
 import scala.util.matching.Regex
 
 /**
@@ -235,7 +235,7 @@ object SchemaReferenceUtils {
   def orderSchemasByDependencies(
     schemas: List[SchemaWithReferences],
     logger: Logger
-  ): Try[List[SchemaWithReferences]] = {
+  ): ApicurioResult[List[SchemaWithReferences]] = {
 
     // Build adjacency list: artifactId -> List of artifact IDs it depends on
     val dependencies = mutable.Map[String, List[String]]()
@@ -283,11 +283,9 @@ object SchemaReferenceUtils {
     if (result.size != schemas.size) {
       // Circular dependency detected
       val missing = schemas.map(_.artifactId).toSet -- result.map(_.artifactId).toSet
-      Failure(new ApicurioException(
-        s"Circular dependency detected in schemas: ${missing.mkString(", ")}"
-      ))
+      Left(ApicurioError.CircularDependency(missing))
     } else {
-      Success(result.toList)
+      Right(result.toList)
     }
   }
 
@@ -390,21 +388,21 @@ object SchemaReferenceUtils {
     client: ApicurioClient,
     logger: Logger,
     visited: Set[String] = Set.empty
-  ): Try[List[ApicurioDependency]] = {
+  ): ApicurioResult[List[ApicurioDependency]] = {
 
     val key = s"$groupId:$artifactId:$version"
     if (visited.contains(key)) {
-      return Success(List.empty)
+      return Right(List.empty)
     }
 
     logger.debug(s"Fetching dependencies for $key")
 
     client.getVersionContent(groupId, artifactId, version) match {
-      case Success(content) =>
+      case Right(content) =>
         // Detect references in the content
         val artifactType = client.getArtifactMetadata(groupId, artifactId) match {
-          case Success(metadata) => ArtifactType.fromString(metadata.artifactType)
-          case Failure(_) => None
+          case Right(metadata) => ArtifactType.fromString(metadata.artifactType)
+          case Left(_) => None
         }
 
         artifactType match {
@@ -432,9 +430,9 @@ object SchemaReferenceUtils {
                   logger,
                   visited + key
                 ) match {
-                  case Success(deps) => deps
-                  case Failure(ex) =>
-                    logger.warn(s"Failed to fetch transitive dependencies for $depArtifactId: ${ex.getMessage}")
+                  case Right(deps) => deps
+                  case Left(err) =>
+                    logger.warn(s"Failed to fetch transitive dependencies for $depArtifactId: ${err.message}")
                     List.empty
                 }
 
@@ -442,14 +440,14 @@ object SchemaReferenceUtils {
               }
             }.flatten
 
-            Success(deps.distinct)
+            Right(deps.distinct)
 
           case None =>
-            Success(List.empty)
+            Right(List.empty)
         }
 
-      case Failure(ex) =>
-        Failure(ex)
+      case Left(err) =>
+        Left(err)
     }
   }
 }
