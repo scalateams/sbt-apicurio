@@ -354,6 +354,9 @@ object ApicurioPlugin extends AutoPlugin {
               // Create schema map for reference resolution
               val schemaMap = orderedSchemas.map(s => s.artifactId -> s).toMap
 
+              // Track published versions so we can populate references with actual version numbers
+              val publishedVersions = scala.collection.mutable.Map[String, String]()
+
               var published = 0
               var unchanged = 0
               var failed = 0
@@ -362,13 +365,35 @@ object ApicurioPlugin extends AutoPlugin {
                 val artifactId = schemaWithRefs.artifactId
                 val schema = schemaWithRefs.schema
 
-                // Resolve references to ContentReference objects
-                val refs = SchemaReferenceUtils.resolveReferences(
-                  schemaWithRefs.references,
-                  validGroupId,
-                  schemaMap,
-                  log
-                )
+                // Resolve references to ContentReference objects, using published version numbers
+                val refs = schemaWithRefs.references.flatMap { ref =>
+                  ref.artifactId match {
+                    case Some(refArtifactId) if schemaMap.contains(refArtifactId) =>
+                      // Internal reference - use the version we just published
+                      val version = publishedVersions.get(refArtifactId)
+                      if (version.isEmpty) {
+                        log.warn(s"Reference to $refArtifactId but no version tracked yet (may need to fetch from registry)")
+                      }
+                      Some(ContentReference(
+                        groupId = Some(validGroupId),
+                        artifactId = refArtifactId,
+                        version = version.orElse(Some("latest")),
+                        name = ref.name
+                      ))
+                    case Some(refArtifactId) =>
+                      // External reference - use provided version or "latest"
+                      log.debug(s"External reference: ${ref.name} -> $refArtifactId")
+                      Some(ContentReference(
+                        groupId = ref.groupId.orElse(Some(validGroupId)),
+                        artifactId = refArtifactId,
+                        version = ref.version.orElse(Some("latest")),
+                        name = ref.name
+                      ))
+                    case None =>
+                      log.warn(s"Could not resolve artifact ID for reference: ${ref.name}")
+                      None
+                  }
+                }
 
                 client.publishSchema(
                   validGroupId,
@@ -379,20 +404,31 @@ object ApicurioPlugin extends AutoPlugin {
                   refs
                 ) match {
                   case Success(Left(createResponse)) =>
-                    // New artifact created - extract version info from response
-                    log.info(s"✓ Created: $artifactId (${schema.artifactType.value}) version ${createResponse.version.version}")
+                    // New artifact created - track the version
+                    val version = createResponse.version.version
+                    publishedVersions(artifactId) = version
+                    log.info(s"✓ Created: $artifactId (${schema.artifactType.value}) version $version")
                     published += 1
-                  case Success(Right(version)) =>
-                    if (version.version == "1") {
-                      log.info(s"✓ Created: $artifactId version ${version.version}")
+                  case Success(Right(versionMeta)) =>
+                    // New version created or existing version - track it
+                    publishedVersions(artifactId) = versionMeta.version
+                    if (versionMeta.version == "1") {
+                      log.info(s"✓ Created: $artifactId version ${versionMeta.version}")
                       published += 1
                     } else {
-                      log.info(s"✓ Updated: $artifactId version ${version.version}")
+                      log.info(s"✓ Updated: $artifactId version ${versionMeta.version}")
                       published += 1
                     }
                   case Failure(_: ApicurioException) if unchanged == 0 =>
-                    // First time seeing unchanged, check if it's actually unchanged
-                    log.debug(s"- Unchanged: $artifactId")
+                    // Schema unchanged - still need to track the version for references
+                    // Fetch the current version from the registry
+                    client.getLatestVersion(validGroupId, artifactId) match {
+                      case Success(versionMeta) =>
+                        publishedVersions(artifactId) = versionMeta.version
+                        log.debug(s"- Unchanged: $artifactId (version ${versionMeta.version})")
+                      case Failure(_) =>
+                        log.debug(s"- Unchanged: $artifactId")
+                    }
                     unchanged += 1
                   case Failure(ex) =>
                     log.error(s"✗ Failed: $artifactId - ${ex.getMessage}")
