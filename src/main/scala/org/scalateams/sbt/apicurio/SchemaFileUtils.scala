@@ -62,7 +62,7 @@ object SchemaFileUtils {
       artifactType <- ArtifactType.fromExtension(ext).toRight(s"Unknown artifact type for file: ${file.getName}")
     } yield {
       val hash = computeHash(content)
-      SchemaFile(file, content, hash, artifactType)
+      SchemaFile(file, content, hash, artifactType, ext.toLowerCase)
     }
 
     result match {
