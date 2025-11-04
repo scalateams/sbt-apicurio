@@ -400,12 +400,17 @@ object SchemaReferenceUtils {
           artifactType match {
             case Some(aType) =>
               // Infer file extension from artifact type for schemas fetched from registry
+              // For OpenAPI/AsyncAPI, detect format from content since they can be JSON or YAML
               val fileExtension = aType match {
-                case ArtifactType.Avro       => "avsc"
-                case ArtifactType.Protobuf   => "proto"
-                case ArtifactType.JsonSchema => "json"
-                case ArtifactType.OpenApi    => "yaml"
-                case ArtifactType.AsyncApi   => "yaml"
+                case ArtifactType.Avro                            => "avsc"
+                case ArtifactType.Protobuf                        => "proto"
+                case ArtifactType.JsonSchema                      => "json"
+                case ArtifactType.OpenApi | ArtifactType.AsyncApi =>
+                  // Try to detect if content is JSON or YAML
+                  parse(content) match {
+                    case Right(_) => "json" // Valid JSON
+                    case Left(_)  => "yaml" // Not JSON, assume YAML
+                  }
               }
 
               val schemaFile = SchemaFile(
