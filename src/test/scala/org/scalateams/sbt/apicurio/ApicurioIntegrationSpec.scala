@@ -231,6 +231,53 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
       client.close()
   }
 
+  it should "handle YAML OpenAPI schemas with correct content-type" taggedAs IntegrationTest in {
+    assumeApicurioAvailable()
+
+    val client = new ApicurioClient(registryUrl, apiKey, testLogger)
+
+    // Actual YAML content to test YAML format handling
+    val yamlContent =
+      """openapi: 3.0.0
+        |info:
+        |  title: Test YAML API
+        |  version: 1.0.0
+        |  description: Test API in YAML format
+        |paths:
+        |  /health:
+        |    get:
+        |      summary: Health check
+        |      responses:
+        |        '200':
+        |          description: OK
+        |""".stripMargin
+
+    val artifactId = "TestYamlOpenAPI"
+
+    try {
+      val result = client.createArtifact(
+        testGroupId,
+        artifactId,
+        ApicurioModels.ArtifactType.OpenApi,
+        yamlContent,
+        "yaml"
+      )
+
+      result shouldBe a[Right[_, _]]
+      val response = result.getOrElse(fail("Expected Right but got Left"))
+      response.artifact.artifactId shouldBe artifactId
+      response.artifact.artifactType shouldBe "OPENAPI"
+      response.version.version shouldBe "1"
+
+      // Verify we can retrieve the content back
+      val retrievedContent = client.getVersionContent(testGroupId, artifactId, "1")
+      retrievedContent shouldBe a[Right[_, _]]
+      val content          = retrievedContent.getOrElse(fail("Expected Right but got Left"))
+      content should include("Test YAML API")
+    } finally
+      client.close()
+  }
+
   behavior of "ApicurioClient - Retrieving"
 
   it should "retrieve artifact metadata" taggedAs IntegrationTest in {
