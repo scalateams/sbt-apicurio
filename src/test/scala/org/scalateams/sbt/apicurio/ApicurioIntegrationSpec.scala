@@ -19,7 +19,7 @@ object IntegrationTest extends Tag("org.scalateams.sbt.apicurio.IntegrationTest"
 class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
 
   // Test configuration
-  private val registryUrl = sys.env.getOrElse("APICURIO_TEST_URL", "http://localhost:8080")
+  private val registryUrl = sys.env.getOrElse("APICURIO_TEST_URL", "http://localhost:8080/apis/registry/v3")
   private val apiKey      = sys.env.get("APICURIO_TEST_API_KEY")
   private val testGroupId = "com.example"
 
