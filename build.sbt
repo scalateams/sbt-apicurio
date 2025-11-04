@@ -1,5 +1,5 @@
 name := "sbt-apicurio"
-organization := "org.scalateams"
+organization := "com.scalateams"
 // Version managed by sbt-ci-release via git tags
 
 sbtPlugin := true
