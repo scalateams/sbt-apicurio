@@ -50,9 +50,13 @@ class ApicurioClient(
       case ("yaml" | "yml", _)        => "application/x-yaml"
       case ("json", _)                => "application/json"
       case ("avsc" | "avro", _)       => "application/json"
+      // Fallback for Protobuf artifacts with non-standard file extensions
       case (_, ArtifactType.Protobuf) => "application/x-protobuf"
       case _                          => "application/json"
     }
+
+  private def isYamlExtension(fileExtension: String): Boolean =
+    fileExtension.toLowerCase == "yaml" || fileExtension.toLowerCase == "yml"
 
   /** Close the HTTP backend. Call this when done with the client. Prefer using ApicurioClient.withClient for automatic
     * resource management.
@@ -171,8 +175,7 @@ class ApicurioClient(
 
     // Validate content is valid JSON for JSON-based schema types
     // Protobuf schemas and YAML files are not JSON, so skip validation for those
-    val isYaml = fileExtension.toLowerCase == "yaml" || fileExtension.toLowerCase == "yml"
-    if (artifactType != ArtifactType.Protobuf && !isYaml) {
+    if (artifactType != ArtifactType.Protobuf && !isYamlExtension(fileExtension)) {
       parse(content) match {
         case Left(error) =>
           return Left(ApicurioError.InvalidSchema(s"Failed to parse schema content as JSON: ${error.getMessage}"))
@@ -237,10 +240,9 @@ class ApicurioClient(
       case Left(_)         => None
     }
     val isProtobuf   = artifactType.contains(ArtifactType.Protobuf)
-    val isYaml       = fileExtension.toLowerCase == "yaml" || fileExtension.toLowerCase == "yml"
 
     // Validate content is valid JSON for JSON-based schema types
-    if (!isProtobuf && !isYaml) {
+    if (!isProtobuf && !isYamlExtension(fileExtension)) {
       parse(content) match {
         case Left(error) =>
           return Left(ApicurioError.InvalidSchema(s"Failed to parse schema content as JSON: ${error.getMessage}"))
