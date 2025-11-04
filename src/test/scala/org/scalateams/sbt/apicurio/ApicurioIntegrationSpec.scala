@@ -131,7 +131,8 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
         testGroupId,
         artifactId,
         avroSchema.artifactType,
-        avroSchema.content
+        avroSchema.content,
+        avroSchema.fileExtension
       )
 
       result shouldBe a[Right[_, _]]
@@ -161,7 +162,8 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
         testGroupId,
         artifactId,
         jsonSchema.artifactType,
-        jsonSchema.content
+        jsonSchema.content,
+        jsonSchema.fileExtension
       )
 
       result shouldBe a[Right[_, _]]
@@ -190,7 +192,8 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
         testGroupId,
         artifactId,
         protoSchema.artifactType,
-        protoSchema.content
+        protoSchema.content,
+        protoSchema.fileExtension
       )
 
       result shouldBe a[Right[_, _]]
@@ -216,7 +219,8 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
         testGroupId,
         artifactId,
         openApiSchema.artifactType,
-        openApiSchema.content
+        openApiSchema.content,
+        openApiSchema.fileExtension
       )
 
       result shouldBe a[Right[_, _]]
@@ -331,7 +335,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
     val modifiedContent = avroSchema.content.replace("\"isActive\"", "\"active\"")
 
     try {
-      val result = client.createVersion(testGroupId, "TestUser", modifiedContent)
+      val result = client.createVersion(testGroupId, "TestUser", modifiedContent, avroSchema.fileExtension)
 
       result shouldBe a[Right[_, _]]
       val version = result.getOrElse(fail("Expected Right but got Left"))
@@ -364,6 +368,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
           artifactId,
           schema.artifactType,
           schema.content,
+          schema.fileExtension,
           ApicurioModels.CompatibilityLevel.Backward
         )
 
@@ -450,7 +455,8 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
         testGroupId,
         "InvalidSchema",
         ApicurioModels.ArtifactType.JsonSchema,
-        invalidJson
+        invalidJson,
+        "json"
       )
 
       result shouldBe a[Left[_, _]]
@@ -508,19 +514,22 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
       file = new File("A.avsc"),
       content = "{}",
       hash = "hashA",
-      artifactType = ApicurioModels.ArtifactType.Avro
+      artifactType = ApicurioModels.ArtifactType.Avro,
+      fileExtension = "avsc"
     )
     val schemaB = ApicurioModels.SchemaFile(
       file = new File("B.avsc"),
       content = "{}",
       hash = "hashB",
-      artifactType = ApicurioModels.ArtifactType.Avro
+      artifactType = ApicurioModels.ArtifactType.Avro,
+      fileExtension = "avsc"
     )
     val schemaC = ApicurioModels.SchemaFile(
       file = new File("C.avsc"),
       content = "{}",
       hash = "hashC",
-      artifactType = ApicurioModels.ArtifactType.Avro
+      artifactType = ApicurioModels.ArtifactType.Avro,
+      fileExtension = "avsc"
     )
 
     val schemasWithRefs = List(
@@ -557,19 +566,22 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
       file = new File("A.avsc"),
       content = "{}",
       hash = "hashA",
-      artifactType = ApicurioModels.ArtifactType.Avro
+      artifactType = ApicurioModels.ArtifactType.Avro,
+      fileExtension = "avsc"
     )
     val schemaB = ApicurioModels.SchemaFile(
       file = new File("B.avsc"),
       content = "{}",
       hash = "hashB",
-      artifactType = ApicurioModels.ArtifactType.Avro
+      artifactType = ApicurioModels.ArtifactType.Avro,
+      fileExtension = "avsc"
     )
     val schemaC = ApicurioModels.SchemaFile(
       file = new File("C.avsc"),
       content = "{}",
       hash = "hashC",
-      artifactType = ApicurioModels.ArtifactType.Avro
+      artifactType = ApicurioModels.ArtifactType.Avro,
+      fileExtension = "avsc"
     )
 
     val schemasWithRefs = List(
@@ -594,10 +606,10 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
 
   it should "handle multiple independent dependency chains" in {
     // Chain 1: A -> B    Chain 2: X -> Y
-    val schemaA = ApicurioModels.SchemaFile(new File("A.avsc"), "{}", "hashA", ApicurioModels.ArtifactType.Avro)
-    val schemaB = ApicurioModels.SchemaFile(new File("B.avsc"), "{}", "hashB", ApicurioModels.ArtifactType.Avro)
-    val schemaX = ApicurioModels.SchemaFile(new File("X.avsc"), "{}", "hashX", ApicurioModels.ArtifactType.Avro)
-    val schemaY = ApicurioModels.SchemaFile(new File("Y.avsc"), "{}", "hashY", ApicurioModels.ArtifactType.Avro)
+    val schemaA = ApicurioModels.SchemaFile(new File("A.avsc"), "{}", "hashA", ApicurioModels.ArtifactType.Avro, "avsc")
+    val schemaB = ApicurioModels.SchemaFile(new File("B.avsc"), "{}", "hashB", ApicurioModels.ArtifactType.Avro, "avsc")
+    val schemaX = ApicurioModels.SchemaFile(new File("X.avsc"), "{}", "hashX", ApicurioModels.ArtifactType.Avro, "avsc")
+    val schemaY = ApicurioModels.SchemaFile(new File("Y.avsc"), "{}", "hashY", ApicurioModels.ArtifactType.Avro, "avsc")
 
     val schemasWithRefs = List(
       SchemaReferenceUtils

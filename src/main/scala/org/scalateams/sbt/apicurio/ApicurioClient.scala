@@ -44,10 +44,15 @@ class ApicurioClient(
   private def authHeaders: Map[String, String] =
     apiKey.map(key => Map("Authorization" -> s"Bearer $key")).getOrElse(Map.empty)
 
-  private def contentTypeForArtifactType(artifactType: ArtifactType): String = artifactType match {
-    case ArtifactType.Protobuf => "application/x-protobuf"
-    case _                     => "application/json"
-  }
+  private def contentTypeForFileExtension(fileExtension: String, artifactType: ArtifactType): String =
+    (fileExtension.toLowerCase, artifactType) match {
+      case ("proto", _)               => "application/x-protobuf"
+      case ("yaml" | "yml", _)        => "application/x-yaml"
+      case ("json", _)                => "application/json"
+      case ("avsc" | "avro", _)       => "application/json"
+      case (_, ArtifactType.Protobuf) => "application/x-protobuf"
+      case _                          => "application/json"
+    }
 
   /** Close the HTTP backend. Call this when done with the client. Prefer using ApicurioClient.withClient for automatic
     * resource management.
@@ -157,6 +162,7 @@ class ApicurioClient(
     artifactId: String,
     artifactType: ArtifactType,
     content: String,
+    fileExtension: String,
     references: List[ContentReference] = List.empty
   ): ApicurioResult[CreateArtifactResponse] = {
     val url = uri"$baseUri/groups/$groupId/artifacts"
@@ -164,8 +170,9 @@ class ApicurioClient(
     logger.info(s"Creating artifact: $groupId:$artifactId (${artifactType.value})")
 
     // Validate content is valid JSON for JSON-based schema types
-    // Protobuf schemas are not JSON, so skip validation for those
-    if (artifactType != ArtifactType.Protobuf) {
+    // Protobuf schemas and YAML files are not JSON, so skip validation for those
+    val isYaml = fileExtension.toLowerCase == "yaml" || fileExtension.toLowerCase == "yml"
+    if (artifactType != ArtifactType.Protobuf && !isYaml) {
       parse(content) match {
         case Left(error) =>
           return Left(ApicurioError.InvalidSchema(s"Failed to parse schema content as JSON: ${error.getMessage}"))
@@ -180,8 +187,8 @@ class ApicurioClient(
       firstVersion = FirstVersionRequest(
         version = None, // Let Apicurio assign version
         content = ContentRequest(
-          content = content, // Content as string (JSON for most types, raw proto for Protobuf)
-          contentType = contentTypeForArtifactType(artifactType),
+          content = content, // Content as string (JSON for most types, raw proto for Protobuf, YAML for YAML files)
+          contentType = contentTypeForFileExtension(fileExtension, artifactType),
           references = references
         )
       )
@@ -217,6 +224,7 @@ class ApicurioClient(
     groupId: String,
     artifactId: String,
     content: String,
+    fileExtension: String,
     references: List[ContentReference] = List.empty
   ): ApicurioResult[VersionMetadata] = {
     val url = uri"$baseUri/groups/$groupId/artifacts/$artifactId/versions"
@@ -229,9 +237,10 @@ class ApicurioClient(
       case Left(_)         => None
     }
     val isProtobuf   = artifactType.contains(ArtifactType.Protobuf)
+    val isYaml       = fileExtension.toLowerCase == "yaml" || fileExtension.toLowerCase == "yml"
 
     // Validate content is valid JSON for JSON-based schema types
-    if (!isProtobuf) {
+    if (!isProtobuf && !isYaml) {
       parse(content) match {
         case Left(error) =>
           return Left(ApicurioError.InvalidSchema(s"Failed to parse schema content as JSON: ${error.getMessage}"))
@@ -244,7 +253,9 @@ class ApicurioClient(
       version = None, // Let Apicurio auto-increment
       content = ContentRequest(
         content = content, // Content as string
-        contentType = artifactType.map(contentTypeForArtifactType).getOrElse("application/json"),
+        contentType = artifactType
+          .map(contentTypeForFileExtension(fileExtension, _))
+          .getOrElse("application/json"),
         references = references
       )
     )
@@ -340,6 +351,7 @@ class ApicurioClient(
     artifactId: String,
     artifactType: ArtifactType,
     content: String,
+    fileExtension: String,
     compatibilityLevel: CompatibilityLevel,
     references: List[ContentReference] = List.empty
   ): ApicurioResult[Either[CreateArtifactResponse, VersionMetadata]] = {
@@ -381,12 +393,12 @@ class ApicurioClient(
             // Check compatibility before creating new version
             checkCompatibility(groupId, artifactId, content, compatibilityLevel) match {
               case Right(true)  =>
-                createVersion(groupId, artifactId, content, references).map(Right(_))
+                createVersion(groupId, artifactId, content, fileExtension, references).map(Right(_))
               case Right(false) =>
                 Left(ApicurioError.IncompatibleSchema(groupId, artifactId, "Compatibility check failed"))
               case Left(err)    =>
                 logger.warn(s"Compatibility check failed, proceeding anyway: ${err.message}")
-                createVersion(groupId, artifactId, content, references).map(Right(_))
+                createVersion(groupId, artifactId, content, fileExtension, references).map(Right(_))
             }
           }
         }
@@ -400,7 +412,7 @@ class ApicurioClient(
         } else {
           logger.info(s"Creating new artifact: $artifactId")
         }
-        createArtifact(groupId, artifactId, artifactType, content, references).map(Left(_))
+        createArtifact(groupId, artifactId, artifactType, content, fileExtension, references).map(Left(_))
 
       case Left(err) =>
         Left(err)

@@ -399,11 +399,21 @@ object SchemaReferenceUtils {
 
           artifactType match {
             case Some(aType) =>
+              // Infer file extension from artifact type for schemas fetched from registry
+              val fileExtension = aType match {
+                case ArtifactType.Avro       => "avsc"
+                case ArtifactType.Protobuf   => "proto"
+                case ArtifactType.JsonSchema => "json"
+                case ArtifactType.OpenApi    => "yaml"
+                case ArtifactType.AsyncApi   => "yaml"
+              }
+
               val schemaFile = SchemaFile(
                 file = new java.io.File(artifactId),
                 content = content,
                 hash = "",
-                artifactType = aType
+                artifactType = aType,
+                fileExtension = fileExtension
               )
 
               val refs = detectReferences(schemaFile, artifactId, logger).references
