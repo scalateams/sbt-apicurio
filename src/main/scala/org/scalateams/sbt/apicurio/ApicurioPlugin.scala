@@ -4,7 +4,7 @@ import org.scalateams.sbt.apicurio.ApicurioModels._
 import sbt.Keys._
 import sbt._
 
-import scala.util.{Failure, Success}
+// All error handling uses Either pattern consistently
 
 object ApicurioPlugin extends AutoPlugin {
 
@@ -13,42 +13,53 @@ object ApicurioPlugin extends AutoPlugin {
   object autoImport {
     // Settings
     val apicurioRegistryUrl = settingKey[String]("Apicurio Registry base URL (e.g., https://registry.example.com)")
-    val apicurioApiKey = settingKey[Option[String]]("Optional API key for Apicurio Registry authentication")
-    val apicurioGroupId = settingKey[String]("Group ID for artifacts (e.g., com.example.yourservice)")
-    val apicurioCompatibilityLevel = settingKey[CompatibilityLevel]("Schema compatibility level: Backward, Forward, Full, or None (default: Backward)")
-    val apicurioSchemaPaths = settingKey[Seq[File]]("Paths to directories containing schema files (default: src/main/schemas)")
-    val apicurioPullOutputDir = settingKey[File]("Directory to save pulled schemas (default: target/schemas)")
-    val apicurioPullDependencies = settingKey[Seq[ApicurioDependency]]("List of schema dependencies to pull using schema(groupId, artifactId, version)")
+    val apicurioApiKey      = settingKey[Option[String]]("Optional API key for Apicurio Registry authentication")
+    val apicurioGroupId     = settingKey[String]("Group ID for artifacts (e.g., com.example.yourservice)")
+    val apicurioCompatibilityLevel =
+      settingKey[CompatibilityLevel]("Schema compatibility level: Backward, Forward, Full, or None (default: Backward)")
+    val apicurioSchemaPaths        =
+      settingKey[Seq[File]]("Paths to directories containing schema files (default: src/main/schemas)")
+    val apicurioPullOutputDir      = settingKey[File]("Directory to save pulled schemas (default: target/schemas)")
+    val apicurioPullDependencies   = settingKey[Seq[ApicurioDependency]](
+      "List of schema dependencies to pull using schema(groupId, artifactId, version)"
+    )
 
     // Tasks
-    val apicurioHelp = taskKey[Unit]("Display help information about the Apicurio plugin")
-    val apicurioPublish = taskKey[Unit]("Publish schemas to Apicurio Registry")
-    val apicurioPull = taskKey[Seq[File]]("Pull schema dependencies from Apicurio Registry")
-    val apicurioDiscoverSchemas = taskKey[Seq[SchemaFile]]("Discover all schema files")
+    val apicurioHelp             = taskKey[Unit]("Display help information about the Apicurio plugin")
+    val apicurioPublish          = taskKey[Unit]("Publish schemas to Apicurio Registry")
+    val apicurioPull             = taskKey[Seq[File]]("Pull schema dependencies from Apicurio Registry")
+    val apicurioDiscoverSchemas  = taskKey[Seq[SchemaFile]]("Discover all schema files")
     val apicurioValidateSettings = taskKey[Unit]("Validate Apicurio plugin settings")
 
     // Re-export models for easy access
     val CompatibilityLevel = ApicurioModels.CompatibilityLevel
     type CompatibilityLevel = ApicurioModels.CompatibilityLevel
 
-    /**
-     * Helper method to create schema dependency declarations without operator conflicts.
-     *
-     * Use this method instead of the % operator to avoid conflicts with SBT's built-in operators:
-     *
-     * {{{
-     * apicurioPullDependencies := Seq(
-     *   schema("com.example.catalog", "CatalogItemCreated", "latest"),
-     *   schema("com.example.tenant", "TenantCreated", "3")
-     * )
-     * }}}
-     *
-     * @param groupId Group ID of the schema (e.g., "com.example.catalog")
-     * @param artifactId Artifact ID / schema name (e.g., "CatalogItemCreated")
-     * @param version Version string or "latest"
-     * @return ApicurioDependency for use in apicurioPullDependencies
-     */
-    def schema(groupId: String, artifactId: String, version: String): ApicurioDependency =
+    /** Helper method to create schema dependency declarations without operator conflicts.
+      *
+      * Use this method instead of the % operator to avoid conflicts with SBT's built-in operators:
+      *
+      * {{{
+      * apicurioPullDependencies := Seq(
+      *   schema("com.example.catalog", "CatalogItemCreated", "latest"),
+      *   schema("com.example.tenant", "TenantCreated", "3")
+      * )
+      * }}}
+      *
+      * @param groupId
+      *   Group ID of the schema (e.g., "com.example.catalog")
+      * @param artifactId
+      *   Artifact ID / schema name (e.g., "CatalogItemCreated")
+      * @param version
+      *   Version string or "latest"
+      * @return
+      *   ApicurioDependency for use in apicurioPullDependencies
+      */
+    def schema(
+      groupId: String,
+      artifactId: String,
+      version: String
+    ): ApicurioDependency =
       ApicurioDependency(groupId, artifactId, version)
   }
 
@@ -56,11 +67,11 @@ object ApicurioPlugin extends AutoPlugin {
 
   override lazy val projectSettings: Seq[Setting[_]] = Seq(
     // Default settings
-    apicurioApiKey := None,
+    apicurioApiKey             := None,
     apicurioCompatibilityLevel := CompatibilityLevel.Backward,
-    apicurioSchemaPaths := Seq(sourceDirectory.value / "main" / "schemas"),
-    apicurioPullOutputDir := target.value / "schemas",
-    apicurioPullDependencies := Seq.empty,
+    apicurioSchemaPaths        := Seq(sourceDirectory.value / "main" / "schemas"),
+    apicurioPullOutputDir      := target.value / "schemas",
+    apicurioPullDependencies   := Seq.empty,
 
     // Help task
     apicurioHelp := {
@@ -147,13 +158,13 @@ object ApicurioPlugin extends AutoPlugin {
       log.info("")
       log.info("CURRENT CONFIGURATION:")
 
-      val url = apicurioRegistryUrl.?.value
-      val groupId = apicurioGroupId.?.value
-      val apiKey = apicurioApiKey.value
-      val compatLevel = apicurioCompatibilityLevel.value
-      val schemaPaths = apicurioSchemaPaths.value
+      val url           = apicurioRegistryUrl.?.value
+      val groupId       = apicurioGroupId.?.value
+      val apiKey        = apicurioApiKey.value
+      val compatLevel   = apicurioCompatibilityLevel.value
+      val schemaPaths   = apicurioSchemaPaths.value
       val pullOutputDir = apicurioPullOutputDir.value
-      val dependencies = apicurioPullDependencies.value
+      val dependencies  = apicurioPullDependencies.value
 
       log.info(s"  Registry URL:       ${url.getOrElse("[NOT SET - REQUIRED]")}")
       log.info(s"  Group ID:           ${groupId.getOrElse("[NOT SET - REQUIRED]")}")
@@ -166,15 +177,13 @@ object ApicurioPlugin extends AutoPlugin {
       if (dependencies.nonEmpty) {
         log.info("")
         log.info("  Configured Dependencies:")
-        dependencies.foreach { dep =>
-          log.info(s"    • ${dep.groupId}:${dep.artifactId}:${dep.version}")
-        }
+        dependencies.foreach(dep => log.info(s"    • ${dep.groupId}:${dep.artifactId}:${dep.version}"))
       }
 
       log.info("")
 
       SchemaFileUtils.validateSettings(url, apiKey, groupId, log) match {
-        case Right(_) =>
+        case Right(_)    =>
           log.info("  Status: ✓ Configuration is valid")
         case Left(error) =>
           log.warn(s"  Status: ✗ Configuration incomplete - $error")
@@ -188,7 +197,7 @@ object ApicurioPlugin extends AutoPlugin {
     // Discovery task
     apicurioDiscoverSchemas := {
       val paths = apicurioSchemaPaths.value
-      val log = streams.value.log
+      val log   = streams.value.log
 
       log.info(s"Discovering schemas in ${paths.size} path(s)...")
       val schemas = SchemaFileUtils.discoverSchemas(paths, log)
@@ -198,11 +207,10 @@ object ApicurioPlugin extends AutoPlugin {
         log.info("Tip: Run 'sbt apicurioHelp' to see configuration options")
       } else {
         log.info(s"Found ${schemas.size} schema file(s):")
-        schemas.groupBy(_.artifactType).foreach { case (artifactType, files) =>
-          log.info(s"  ${artifactType.value}: ${files.size} file(s)")
-          files.foreach { schema =>
-            log.info(s"    • ${schema.file.getName}")
-          }
+        schemas.groupBy(_.artifactType).foreach {
+          case (artifactType, files) =>
+            log.info(s"  ${artifactType.value}: ${files.size} file(s)")
+            files.foreach(schema => log.info(s"    • ${schema.file.getName}"))
         }
       }
 
@@ -211,9 +219,9 @@ object ApicurioPlugin extends AutoPlugin {
 
     // Validation task
     apicurioValidateSettings := {
-      val log = streams.value.log
-      val url = apicurioRegistryUrl.?.value
-      val apiKey = apicurioApiKey.value
+      val log     = streams.value.log
+      val url     = apicurioRegistryUrl.?.value
+      val apiKey  = apicurioApiKey.value
       val groupId = apicurioGroupId.?.value
 
       log.info("Validating Apicurio plugin configuration...")
@@ -226,7 +234,7 @@ object ApicurioPlugin extends AutoPlugin {
           log.info("✓ Configuration is valid")
           log.info(s"  Ready to publish to: $validUrl")
           log.info(s"  Using group ID: $validGroupId")
-        case Left(error) =>
+        case Left(error)                        =>
           log.error("✗ Configuration is invalid")
           log.error(s"  Error: $error")
           log.info("")
@@ -243,45 +251,45 @@ object ApicurioPlugin extends AutoPlugin {
 
     // Pull task - runs before compile
     apicurioPull := {
-      val log = streams.value.log
-      val url = apicurioRegistryUrl.?.value
-      val apiKey = apicurioApiKey.value
-      val groupId = apicurioGroupId.?.value
-      val outputDir = apicurioPullOutputDir.value
+      val log          = streams.value.log
+      val url          = apicurioRegistryUrl.?.value
+      val apiKey       = apicurioApiKey.value
+      val groupId      = apicurioGroupId.?.value
+      val outputDir    = apicurioPullOutputDir.value
       val dependencies = apicurioPullDependencies.value
 
       if (dependencies.isEmpty) {
         log.debug("No schema dependencies configured")
-        log.debug("Tip: Add dependencies in build.sbt with: apicurioPullDependencies := Seq(schema(\"groupId\", \"artifactId\", \"version\"))")
+        log.debug(
+          "Tip: Add dependencies in build.sbt with: apicurioPullDependencies := Seq(schema(\"groupId\", \"artifactId\", \"version\"))"
+        )
         Seq.empty
       } else {
         SchemaFileUtils.validateSettings(url, apiKey, groupId, log) match {
           case Right((validUrl, validApiKey, _)) =>
-            val client = new ApicurioClient(validUrl, validApiKey, log)
-            try {
+            ApicurioClient.withClient(validUrl, validApiKey, log) { client =>
               log.info(s"Pulling ${dependencies.size} schema dependencies from Apicurio Registry")
 
               val pulledFiles = dependencies.flatMap { dep =>
                 val version = if (dep.version == "latest") "latest" else dep.version
 
-                client.getVersionContent(dep.groupId, dep.artifactId, version) match {
-                  case Right(content) =>
-                    SchemaFileUtils.saveSchema(outputDir, dep, content, log) match {
-                      case Success(file) =>
-                        log.info(s"✓ Pulled: ${dep.groupId}:${dep.artifactId}:${dep.version}")
-                        Some(file)
-                      case Failure(ex) =>
-                        log.error(s"✗ Failed to save schema ${dep.groupId}:${dep.artifactId}: ${ex.getMessage}")
-                        None
-                    }
-                  case Left(err) =>
-                    log.error(s"✗ Failed to pull schema ${dep.groupId}:${dep.artifactId}:${dep.version}: ${err.message}")
+                (for {
+                  content <- client.getVersionContent(dep.groupId, dep.artifactId, version)
+                  file    <- SchemaFileUtils.saveSchema(outputDir, dep, content, log)
+                } yield file) match {
+                  case Right(file) =>
+                    log.info(s"✓ Pulled: ${dep.groupId}:${dep.artifactId}:${dep.version}")
+                    Some(file)
+                  case Left(err)   =>
+                    log.error(
+                      s"✗ Failed to pull schema ${dep.groupId}:${dep.artifactId}:${dep.version}: ${err.message}"
+                    )
                     None
                 }
               }
 
               val successCount = pulledFiles.size
-              val failCount = dependencies.size - successCount
+              val failCount    = dependencies.size - successCount
 
               if (successCount > 0) {
                 log.info(s"Successfully pulled $successCount schema(s) to $outputDir")
@@ -291,10 +299,8 @@ object ApicurioPlugin extends AutoPlugin {
               }
 
               pulledFiles
-            } finally {
-              client.close()
             }
-          case Left(error) =>
+          case Left(error)                       =>
             sys.error(s"Cannot pull schemas: $error")
         }
       }
@@ -302,12 +308,12 @@ object ApicurioPlugin extends AutoPlugin {
 
     // Publish task
     apicurioPublish := {
-      val log = streams.value.log
-      val url = apicurioRegistryUrl.?.value
-      val apiKey = apicurioApiKey.value
-      val groupId = apicurioGroupId.?.value
+      val log         = streams.value.log
+      val url         = apicurioRegistryUrl.?.value
+      val apiKey      = apicurioApiKey.value
+      val groupId     = apicurioGroupId.?.value
       val compatLevel = apicurioCompatibilityLevel.value
-      val schemas = apicurioDiscoverSchemas.value
+      val schemas     = apicurioDiscoverSchemas.value
 
       SchemaFileUtils.validateSettings(url, apiKey, groupId, log) match {
         case Right((validUrl, validApiKey, validGroupId)) =>
@@ -316,8 +322,7 @@ object ApicurioPlugin extends AutoPlugin {
             log.info("Tip: Check your apicurioSchemaPaths setting or run 'sbt apicurioDiscoverSchemas'")
             log.info("Default schema path: src/main/schemas")
           } else {
-            val client = new ApicurioClient(validUrl, validApiKey, log)
-            try {
+            ApicurioClient.withClient(validUrl, validApiKey, log) { client =>
               log.info(s"Publishing ${schemas.size} schemas to Apicurio Registry")
               log.info(s"Group ID: $validGroupId")
               log.info(s"Compatibility Level: ${compatLevel.value}")
@@ -339,61 +344,77 @@ object ApicurioPlugin extends AutoPlugin {
               }
 
               // Order schemas by dependencies
-              val orderedSchemas: List[SchemaReferenceUtils.SchemaWithReferences] = SchemaReferenceUtils.orderSchemasByDependencies(schemasWithRefs, log) match {
-                case Right(ordered) =>
-                  if (hasReferences) {
-                    log.info(s"Publishing in dependency order: ${ordered.map(_.artifactId).mkString(" → ")}")
-                  }
-                  ordered
-                case Left(err) =>
-                  log.warn(s"Could not order schemas by dependencies: ${err.message}")
-                  log.warn("Publishing in discovery order (may fail if dependencies not published)")
-                  schemasWithRefs
-              }
+              val orderedSchemas: List[SchemaReferenceUtils.SchemaWithReferences] =
+                SchemaReferenceUtils.orderSchemasByDependencies(schemasWithRefs, log) match {
+                  case Right(ordered) =>
+                    if (hasReferences) {
+                      log.info(s"Publishing in dependency order: ${ordered.map(_.artifactId).mkString(" → ")}")
+                    }
+                    ordered
+                  case Left(err)      =>
+                    log.warn(s"Could not order schemas by dependencies: ${err.message}")
+                    log.warn("Publishing in discovery order (may fail if dependencies not published)")
+                    schemasWithRefs
+                }
 
               // Create schema map for reference resolution
               val schemaMap = orderedSchemas.map(s => s.artifactId -> s).toMap
 
-              // Track published versions so we can populate references with actual version numbers
-              val publishedVersions = scala.collection.mutable.Map[String, String]()
+              // Immutable accumulator for publishing state
+              case class PublishState(
+                publishedVersions: Map[String, String],
+                published: Int,
+                unchanged: Int,
+                failed: Int)
 
-              var published = 0
-              var unchanged = 0
-              var failed = 0
-
-              orderedSchemas.foreach { schemaWithRefs =>
-                val artifactId = schemaWithRefs.artifactId
-                val schema = schemaWithRefs.schema
-
-                // Resolve references to ContentReference objects, using published version numbers
-                val refs = schemaWithRefs.references.flatMap { ref =>
+              // Helper function to resolve references with current state
+              def resolveReferences(
+                schemaWithRefs: SchemaReferenceUtils.SchemaWithReferences,
+                publishedVersions: Map[String, String]
+              ): List[ContentReference] =
+                schemaWithRefs.references.flatMap { ref =>
                   ref.artifactId match {
                     case Some(refArtifactId) if schemaMap.contains(refArtifactId) =>
                       // Internal reference - use the version we just published
                       val version = publishedVersions.get(refArtifactId)
                       if (version.isEmpty) {
-                        log.warn(s"Reference to $refArtifactId but no version tracked yet (may need to fetch from registry)")
+                        log.warn(
+                          s"Reference to $refArtifactId but no version tracked yet (may need to fetch from registry)"
+                        )
                       }
-                      Some(ContentReference(
-                        groupId = Some(validGroupId),
-                        artifactId = refArtifactId,
-                        version = version.orElse(Some("latest")),
-                        name = ref.name
-                      ))
-                    case Some(refArtifactId) =>
+                      Some(
+                        ContentReference(
+                          groupId = Some(validGroupId),
+                          artifactId = refArtifactId,
+                          version = version.orElse(Some("latest")),
+                          name = ref.name
+                        )
+                      )
+                    case Some(refArtifactId)                                      =>
                       // External reference - use provided version or "latest"
                       log.debug(s"External reference: ${ref.name} -> $refArtifactId")
-                      Some(ContentReference(
-                        groupId = ref.groupId.orElse(Some(validGroupId)),
-                        artifactId = refArtifactId,
-                        version = ref.version.orElse(Some("latest")),
-                        name = ref.name
-                      ))
-                    case None =>
+                      Some(
+                        ContentReference(
+                          groupId = ref.groupId.orElse(Some(validGroupId)),
+                          artifactId = refArtifactId,
+                          version = ref.version.orElse(Some("latest")),
+                          name = ref.name
+                        )
+                      )
+                    case None                                                     =>
                       log.warn(s"Could not resolve artifact ID for reference: ${ref.name}")
                       None
                   }
                 }
+
+              val initialState = PublishState(Map.empty, 0, 0, 0)
+
+              val finalState = orderedSchemas.foldLeft(initialState) { (state, schemaWithRefs) =>
+                val artifactId = schemaWithRefs.artifactId
+                val schema     = schemaWithRefs.schema
+
+                // Resolve references using current published versions
+                val refs = resolveReferences(schemaWithRefs, state.publishedVersions)
 
                 client.publishSchema(
                   validGroupId,
@@ -403,42 +424,50 @@ object ApicurioPlugin extends AutoPlugin {
                   compatLevel,
                   refs
                 ) match {
-                  case Right(Left(createResponse)) =>
-                    // New artifact created - track the version
+                  case Right(Left(createResponse))               =>
+                    // New artifact created
                     val version = createResponse.version.version
-                    publishedVersions(artifactId) = version
                     log.info(s"✓ Created: $artifactId (${schema.artifactType.value}) version $version")
-                    published += 1
-                  case Right(Right(versionMeta)) =>
-                    // New version created or existing version - track it
-                    publishedVersions(artifactId) = versionMeta.version
-                    if (versionMeta.version == "1") {
-                      log.info(s"✓ Created: $artifactId version ${versionMeta.version}")
-                      published += 1
-                    } else {
-                      log.info(s"✓ Updated: $artifactId version ${versionMeta.version}")
-                      published += 1
-                    }
-                  case Left(_: ApicurioError.ArtifactNotFound) if unchanged == 0 =>
-                    // This shouldn't happen but handle gracefully
+                    state.copy(
+                      publishedVersions = state.publishedVersions + (artifactId -> version),
+                      published = state.published + 1
+                    )
+                  case Right(Right(versionMeta))                 =>
+                    // New version created or existing version
+                    log.info(
+                      s"✓ ${if (versionMeta.version == "1") "Created" else "Updated"}: $artifactId version ${versionMeta.version}"
+                    )
+                    state.copy(
+                      publishedVersions = state.publishedVersions + (artifactId -> versionMeta.version),
+                      published = state.published + 1
+                    )
+                  case Left(_: ApicurioError.ArtifactNotFound)   =>
+                    // Unexpected artifact not found error
                     log.error(s"✗ Failed: $artifactId - Unexpected artifact not found error")
-                    failed += 1
-                  case Left(_: ApicurioError.IncompatibleSchema) if unchanged == 0 =>
-                    // Schema unchanged - still need to track the version for references
-                    // Fetch the current version from the registry
-                    client.getLatestVersion(validGroupId, artifactId) match {
+                    state.copy(failed = state.failed + 1)
+                  case Left(_: ApicurioError.IncompatibleSchema) =>
+                    // Schema unchanged - fetch current version for references
+                    val updatedVersions = client.getLatestVersion(validGroupId, artifactId) match {
                       case Right(versionMeta) =>
-                        publishedVersions(artifactId) = versionMeta.version
                         log.debug(s"- Unchanged: $artifactId (version ${versionMeta.version})")
-                      case Left(_) =>
+                        state.publishedVersions + (artifactId -> versionMeta.version)
+                      case Left(_)            =>
                         log.debug(s"- Unchanged: $artifactId")
+                        state.publishedVersions
                     }
-                    unchanged += 1
-                  case Left(err) =>
+                    state.copy(
+                      publishedVersions = updatedVersions,
+                      unchanged = state.unchanged + 1
+                    )
+                  case Left(err)                                 =>
                     log.error(s"✗ Failed: $artifactId - ${err.message}")
-                    failed += 1
+                    state.copy(failed = state.failed + 1)
                 }
               }
+
+              val published = finalState.published
+              val unchanged = finalState.unchanged
+              val failed    = finalState.failed
 
               log.info("")
               log.info("Publishing Summary:")
@@ -450,11 +479,9 @@ object ApicurioPlugin extends AutoPlugin {
               if (failed > 0) {
                 sys.error(s"Failed to publish $failed schemas. Check error messages above.")
               }
-            } finally {
-              client.close()
             }
           }
-        case Left(error) =>
+        case Left(error)                                  =>
           sys.error(s"Cannot publish schemas: $error")
       }
     },

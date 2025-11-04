@@ -1,0 +1,1 @@
+- always run scalafmt before a commit

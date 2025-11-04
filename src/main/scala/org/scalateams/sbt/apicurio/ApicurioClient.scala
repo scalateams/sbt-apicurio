@@ -8,29 +8,54 @@ import sttp.client3.circe._
 
 import java.security.MessageDigest
 
+/** Functional resource management for ApicurioClient. Automatically manages backend lifecycle.
+  */
+object ApicurioClient {
+
+  /** Execute an operation with an ApicurioClient, ensuring proper resource cleanup. This is the recommended way to use
+    * the client.
+    *
+    * @example
+    *   {{{ ApicurioClient.withClient(url, apiKey, logger) { client => client.publishSchema(groupId, artifactId,
+    *   artifactType, content, compatLevel) } }}}
+    */
+  def withClient[A](
+    registryUrl: String,
+    apiKey: Option[String],
+    logger: Logger
+  )(f: ApicurioClient => A
+  ): A = {
+    val client = new ApicurioClient(registryUrl, apiKey, logger)
+    try
+      f(client)
+    finally
+      client.close()
+  }
+}
+
 class ApicurioClient(
   registryUrl: String,
   apiKey: Option[String],
-  logger: Logger
-) {
+  logger: Logger) {
 
   private val backend = HttpURLConnectionBackend()
   private val baseUri = uri"$registryUrl"
 
-  private def authHeaders: Map[String, String] = {
+  private def authHeaders: Map[String, String] =
     apiKey.map(key => Map("Authorization" -> s"Bearer $key")).getOrElse(Map.empty)
-  }
 
   private def contentTypeForArtifactType(artifactType: ArtifactType): String = artifactType match {
     case ArtifactType.Protobuf => "application/x-protobuf"
-    case _ => "application/json"
+    case _                     => "application/json"
   }
 
+  /** Close the HTTP backend. Call this when done with the client. Prefer using ApicurioClient.withClient for automatic
+    * resource management.
+    */
   def close(): Unit = backend.close()
 
-  /**
-   * Get artifact metadata
-   */
+  /** Get artifact metadata
+    */
   def getArtifactMetadata(groupId: String, artifactId: String): ApicurioResult[ArtifactMetadata] = {
     val url = uri"$baseUri/groups/$groupId/artifacts/$artifactId"
 
@@ -44,10 +69,10 @@ class ApicurioClient(
     try {
       val response = request.send(backend)
       response.body match {
-        case Right(metadata) => Right(metadata)
+        case Right(metadata)                          => Right(metadata)
         case Left(error) if response.code.code == 404 =>
           Left(ApicurioError.ArtifactNotFound(groupId, artifactId))
-        case Left(error) =>
+        case Left(error)                              =>
           Left(ApicurioError.HttpError(response.code.code, error.getMessage))
       }
     } catch {
@@ -55,9 +80,8 @@ class ApicurioClient(
     }
   }
 
-  /**
-   * Get latest version of an artifact
-   */
+  /** Get latest version of an artifact
+    */
   def getLatestVersion(groupId: String, artifactId: String): ApicurioResult[VersionMetadata] = {
     val url = uri"$baseUri/groups/$groupId/artifacts/$artifactId/versions"
 
@@ -71,18 +95,18 @@ class ApicurioClient(
     try {
       val response = request.send(backend)
       response.body match {
-        case Right(body) =>
+        case Right(body)                              =>
           parse(body).flatMap(_.hcursor.downField("versions").as[List[VersionMetadata]]) match {
             case Right(versions) if versions.nonEmpty =>
               Right(versions.maxBy(_.version))
-            case Right(_) =>
+            case Right(_)                             =>
               Left(ApicurioError.ArtifactNotFound(groupId, artifactId))
-            case Left(error) =>
+            case Left(error)                          =>
               Left(ApicurioError.ParseError(s"Failed to parse versions: ${error.getMessage}"))
           }
         case Left(error) if response.code.code == 404 =>
           Left(ApicurioError.ArtifactNotFound(groupId, artifactId))
-        case Left(error) =>
+        case Left(error)                              =>
           Left(ApicurioError.HttpError(response.code.code, error))
       }
     } catch {
@@ -90,10 +114,13 @@ class ApicurioClient(
     }
   }
 
-  /**
-   * Get specific version content
-   */
-  def getVersionContent(groupId: String, artifactId: String, version: String): ApicurioResult[String] = {
+  /** Get specific version content
+    */
+  def getVersionContent(
+    groupId: String,
+    artifactId: String,
+    version: String
+  ): ApicurioResult[String] =
     // If "latest" is requested, resolve it to the actual latest version number first
     if (version == "latest") {
       getLatestVersion(groupId, artifactId).flatMap { latestVersionMeta =>
@@ -112,22 +139,19 @@ class ApicurioClient(
       try {
         val response = request.send(backend)
         response.body match {
-          case Right(content) => Right(content)
+          case Right(content)                           => Right(content)
           case Left(error) if response.code.code == 404 =>
             Left(ApicurioError.VersionNotFound(groupId, artifactId, version))
-          case Left(error) =>
+          case Left(error)                              =>
             Left(ApicurioError.HttpError(response.code.code, error))
         }
       } catch {
         case ex: Exception => Left(ApicurioError.NetworkError(ex))
       }
     }
-  }
 
-  /**
-   * Create a new artifact
-   * Returns both artifact and version metadata
-   */
+  /** Create a new artifact Returns both artifact and version metadata
+    */
   def createArtifact(
     groupId: String,
     artifactId: String,
@@ -145,7 +169,7 @@ class ApicurioClient(
       parse(content) match {
         case Left(error) =>
           return Left(ApicurioError.InvalidSchema(s"Failed to parse schema content as JSON: ${error.getMessage}"))
-        case Right(_) => // Valid JSON, continue
+        case Right(_)    => // Valid JSON, continue
       }
     }
 
@@ -164,7 +188,9 @@ class ApicurioClient(
     )
 
     if (references.nonEmpty) {
-      logger.debug(s"Creating artifact with ${references.size} reference(s): ${references.map(_.artifactId).mkString(", ")}")
+      logger.debug(
+        s"Creating artifact with ${references.size} reference(s): ${references.map(_.artifactId).mkString(", ")}"
+      )
     }
 
     val request = basicRequest
@@ -177,7 +203,7 @@ class ApicurioClient(
       val response = request.send(backend)
       response.body match {
         case Right(createResponse) => Right(createResponse)
-        case Left(error) =>
+        case Left(error)           =>
           Left(ApicurioError.HttpError(response.code.code, error.getMessage))
       }
     } catch {
@@ -185,9 +211,8 @@ class ApicurioClient(
     }
   }
 
-  /**
-   * Create a new version of an existing artifact
-   */
+  /** Create a new version of an existing artifact
+    */
   def createVersion(
     groupId: String,
     artifactId: String,
@@ -201,16 +226,16 @@ class ApicurioClient(
     // Get artifact metadata to determine type
     val artifactType = getArtifactMetadata(groupId, artifactId) match {
       case Right(metadata) => ArtifactType.fromString(metadata.artifactType)
-      case Left(_) => None
+      case Left(_)         => None
     }
-    val isProtobuf = artifactType.contains(ArtifactType.Protobuf)
+    val isProtobuf   = artifactType.contains(ArtifactType.Protobuf)
 
     // Validate content is valid JSON for JSON-based schema types
     if (!isProtobuf) {
       parse(content) match {
         case Left(error) =>
           return Left(ApicurioError.InvalidSchema(s"Failed to parse schema content as JSON: ${error.getMessage}"))
-        case Right(_) => // Valid JSON, continue
+        case Right(_)    => // Valid JSON, continue
       }
     }
 
@@ -225,7 +250,9 @@ class ApicurioClient(
     )
 
     if (references.nonEmpty) {
-      logger.debug(s"Creating version with ${references.size} reference(s): ${references.map(_.artifactId).mkString(", ")}")
+      logger.debug(
+        s"Creating version with ${references.size} reference(s): ${references.map(_.artifactId).mkString(", ")}"
+      )
     }
 
     val request = basicRequest
@@ -238,7 +265,7 @@ class ApicurioClient(
       val response = request.send(backend)
       response.body match {
         case Right(metadata) => Right(metadata)
-        case Left(error) =>
+        case Left(error)     =>
           Left(ApicurioError.HttpError(response.code.code, error.getMessage))
       }
     } catch {
@@ -246,9 +273,8 @@ class ApicurioClient(
     }
   }
 
-  /**
-   * Check compatibility of schema content against the registry
-   */
+  /** Check compatibility of schema content against the registry
+    */
   def checkCompatibility(
     groupId: String,
     artifactId: String,
@@ -274,7 +300,7 @@ class ApicurioClient(
       }
 
       // Now test compatibility
-      val testUrl = uri"$baseUri/groups/$groupId/artifacts/$artifactId/rules/COMPATIBILITY/test"
+      val testUrl     = uri"$baseUri/groups/$groupId/artifacts/$artifactId/rules/COMPATIBILITY/test"
       val testRequest = basicRequest
         .post(testUrl)
         .headers(authHeaders ++ Map("Content-Type" -> "application/json"))
@@ -283,10 +309,10 @@ class ApicurioClient(
 
       val testResponse = testRequest.send(backend)
       testResponse.body match {
-        case Right(body) =>
+        case Right(body)                                  =>
           parse(body).flatMap(_.hcursor.get[Boolean]("compatible")) match {
             case Right(compatible) => Right(compatible)
-            case Left(_) =>
+            case Left(_)           =>
               // If we can't parse the response, assume incompatible
               logger.warn(s"Could not parse compatibility response, assuming incompatible")
               Right(false)
@@ -295,7 +321,7 @@ class ApicurioClient(
           // Artifact doesn't exist yet, so it's "compatible"
           logger.debug(s"Artifact doesn't exist, skipping compatibility check")
           Right(true)
-        case Left(error) =>
+        case Left(error)                                  =>
           logger.warn(s"Compatibility check failed: $error")
           Right(false)
       }
@@ -304,12 +330,11 @@ class ApicurioClient(
     }
   }
 
-  /**
-   * Publish a schema - creates artifact if not exists, or creates new version if changed
-   * Returns Left(CreateArtifactResponse) if newly created, Right(VersionMetadata) if updated
-   *
-   * Note: Changes to content OR references will trigger a new version
-   */
+  /** Publish a schema - creates artifact if not exists, or creates new version if changed Returns
+    * Left(CreateArtifactResponse) if newly created, Right(VersionMetadata) if updated
+    *
+    * Note: Changes to content OR references will trigger a new version
+    */
   def publishSchema(
     groupId: String,
     artifactId: String,
@@ -332,7 +357,7 @@ class ApicurioClient(
       case Right(metadata) =>
         // Artifact exists, check if content or references have changed
         val result = for {
-          latestVersion <- getLatestVersion(groupId, artifactId)
+          latestVersion   <- getLatestVersion(groupId, artifactId)
           existingContent <- getVersionContent(groupId, artifactId, latestVersion.version)
         } yield {
           val existingHash = computeHash(existingContent)
@@ -355,11 +380,11 @@ class ApicurioClient(
 
             // Check compatibility before creating new version
             checkCompatibility(groupId, artifactId, content, compatibilityLevel) match {
-              case Right(true) =>
+              case Right(true)  =>
                 createVersion(groupId, artifactId, content, references).map(Right(_))
               case Right(false) =>
                 Left(ApicurioError.IncompatibleSchema(groupId, artifactId, "Compatibility check failed"))
-              case Left(err) =>
+              case Left(err)    =>
                 logger.warn(s"Compatibility check failed, proceeding anyway: ${err.message}")
                 createVersion(groupId, artifactId, content, references).map(Right(_))
             }
@@ -384,13 +409,11 @@ class ApicurioClient(
 
   private def computeHash(content: String): String = {
     val digest = MessageDigest.getInstance("SHA-256")
-    val hash = digest.digest(content.getBytes("UTF-8"))
+    val hash   = digest.digest(content.getBytes("UTF-8"))
     hash.map("%02x".format(_)).mkString
   }
 }
 
-class ApicurioException(message: String, cause: Throwable = null)
-  extends Exception(message, cause)
+class ApicurioException(message: String, cause: Throwable = null) extends Exception(message, cause)
 
-class ApicurioNotFoundException(message: String)
-  extends ApicurioException(message)
+class ApicurioNotFoundException(message: String) extends ApicurioException(message)
