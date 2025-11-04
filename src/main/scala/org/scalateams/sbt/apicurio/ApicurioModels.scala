@@ -166,7 +166,8 @@ object ApicurioModels {
     file: java.io.File,
     content: String,
     hash: String,
-    artifactType: ArtifactType)
+    artifactType: ArtifactType,
+    fileExtension: String)
 
   case class CompatibilityCheckResult(
     compatible: Boolean,

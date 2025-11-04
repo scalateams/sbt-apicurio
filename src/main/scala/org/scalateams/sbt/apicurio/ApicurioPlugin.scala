@@ -421,6 +421,7 @@ object ApicurioPlugin extends AutoPlugin {
                   artifactId,
                   schema.artifactType,
                   schema.content,
+                  schema.fileExtension,
                   compatLevel,
                   refs
                 ) match {
