@@ -36,10 +36,8 @@ developers := List(
   )
 )
 
-// Sonatype repository configuration
-publishMavenStyle := true
-sonatypeCredentialHost := "s01.oss.sonatype.org"
-sonatypeRepository := "https://s01.oss.sonatype.org/service/local"
+// Publishing settings - let sbt-ci-release 1.11+ handle Central Portal configuration automatically
+// No manual publishMavenStyle, publishTo, or credentials needed
 
 scalacOptions ++= Seq(
   "-encoding", "UTF-8",
