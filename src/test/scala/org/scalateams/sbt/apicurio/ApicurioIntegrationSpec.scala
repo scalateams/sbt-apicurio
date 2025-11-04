@@ -502,6 +502,124 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
     ordered.size shouldBe schemasWithRefs.size
   }
 
+  it should "handle circular dependencies in topological sort" in {
+    // Create mock schemas with circular dependency: A -> B -> C -> A
+    val schemaA = ApicurioModels.SchemaFile(
+      file = new File("A.avsc"),
+      content = "{}",
+      hash = "hashA",
+      artifactType = ApicurioModels.ArtifactType.Avro
+    )
+    val schemaB = ApicurioModels.SchemaFile(
+      file = new File("B.avsc"),
+      content = "{}",
+      hash = "hashB",
+      artifactType = ApicurioModels.ArtifactType.Avro
+    )
+    val schemaC = ApicurioModels.SchemaFile(
+      file = new File("C.avsc"),
+      content = "{}",
+      hash = "hashC",
+      artifactType = ApicurioModels.ArtifactType.Avro
+    )
+
+    val schemasWithRefs = List(
+      SchemaReferenceUtils.SchemaWithReferences(
+        schemaA,
+        "A",
+        List(SchemaReferenceUtils.SchemaReference("B", artifactId = Some("B")))
+      ),
+      SchemaReferenceUtils.SchemaWithReferences(
+        schemaB,
+        "B",
+        List(SchemaReferenceUtils.SchemaReference("C", artifactId = Some("C")))
+      ),
+      SchemaReferenceUtils.SchemaWithReferences(
+        schemaC,
+        "C",
+        List(SchemaReferenceUtils.SchemaReference("A", artifactId = Some("A")))
+      )
+    )
+
+    val result = SchemaReferenceUtils.orderSchemasByDependencies(schemasWithRefs, testLogger)
+
+    result shouldBe a[Left[_, _]]
+    result match {
+      case Left(ApicurioError.CircularDependency(schemas)) =>
+        schemas should contain allOf ("A", "B", "C")
+      case _                                               => fail("Expected CircularDependency error")
+    }
+  }
+
+  it should "correctly order schemas in dependency order (dependencies first)" in {
+    // Create schemas: A has no deps, B depends on A, C depends on B
+    val schemaA = ApicurioModels.SchemaFile(
+      file = new File("A.avsc"),
+      content = "{}",
+      hash = "hashA",
+      artifactType = ApicurioModels.ArtifactType.Avro
+    )
+    val schemaB = ApicurioModels.SchemaFile(
+      file = new File("B.avsc"),
+      content = "{}",
+      hash = "hashB",
+      artifactType = ApicurioModels.ArtifactType.Avro
+    )
+    val schemaC = ApicurioModels.SchemaFile(
+      file = new File("C.avsc"),
+      content = "{}",
+      hash = "hashC",
+      artifactType = ApicurioModels.ArtifactType.Avro
+    )
+
+    val schemasWithRefs = List(
+      SchemaReferenceUtils
+        .SchemaWithReferences(schemaC, "C", List(SchemaReferenceUtils.SchemaReference("B", artifactId = Some("B")))),
+      SchemaReferenceUtils
+        .SchemaWithReferences(schemaB, "B", List(SchemaReferenceUtils.SchemaReference("A", artifactId = Some("A")))),
+      SchemaReferenceUtils.SchemaWithReferences(schemaA, "A", List.empty)
+    )
+
+    val result = SchemaReferenceUtils.orderSchemasByDependencies(schemasWithRefs, testLogger)
+
+    result shouldBe a[Right[_, _]]
+    val ordered = result.getOrElse(fail("Expected Right"))
+    ordered.size shouldBe 3
+
+    // Verify ordering: A should come before B, B should come before C
+    val ids = ordered.map(_.artifactId)
+    ids.indexOf("A") should be < ids.indexOf("B")
+    ids.indexOf("B") should be < ids.indexOf("C")
+  }
+
+  it should "handle multiple independent dependency chains" in {
+    // Chain 1: A -> B    Chain 2: X -> Y
+    val schemaA = ApicurioModels.SchemaFile(new File("A.avsc"), "{}", "hashA", ApicurioModels.ArtifactType.Avro)
+    val schemaB = ApicurioModels.SchemaFile(new File("B.avsc"), "{}", "hashB", ApicurioModels.ArtifactType.Avro)
+    val schemaX = ApicurioModels.SchemaFile(new File("X.avsc"), "{}", "hashX", ApicurioModels.ArtifactType.Avro)
+    val schemaY = ApicurioModels.SchemaFile(new File("Y.avsc"), "{}", "hashY", ApicurioModels.ArtifactType.Avro)
+
+    val schemasWithRefs = List(
+      SchemaReferenceUtils
+        .SchemaWithReferences(schemaB, "B", List(SchemaReferenceUtils.SchemaReference("A", artifactId = Some("A")))),
+      SchemaReferenceUtils
+        .SchemaWithReferences(schemaY, "Y", List(SchemaReferenceUtils.SchemaReference("X", artifactId = Some("X")))),
+      SchemaReferenceUtils.SchemaWithReferences(schemaA, "A", List.empty),
+      SchemaReferenceUtils.SchemaWithReferences(schemaX, "X", List.empty)
+    )
+
+    val result = SchemaReferenceUtils.orderSchemasByDependencies(schemasWithRefs, testLogger)
+
+    result shouldBe a[Right[_, _]]
+    val ordered = result.getOrElse(fail("Expected Right"))
+    ordered.size shouldBe 4
+
+    // Verify both chains are ordered correctly
+    val ids = ordered.map(_.artifactId)
+    ids.indexOf("A") should be < ids.indexOf("B")
+    ids.indexOf("X") should be < ids.indexOf("Y")
+  }
+
   behavior of "ApicurioClient - Compatibility Checking"
 
   it should "check compatibility for compatible schema changes" taggedAs IntegrationTest in {

@@ -208,7 +208,18 @@ object ApicurioModels {
     }
 
     final case class CircularDependency(schemas: Set[String]) extends ApicurioError {
-      def message: String = s"Circular dependency detected in schemas: ${schemas.mkString(", ")}"
+      def message: String = {
+        val schemaList = schemas.toList.sorted.mkString(", ")
+        s"""Circular dependency detected among schemas: $schemaList
+           |
+           |These schemas form a dependency cycle where each depends on another in the group.
+           |Schemas must be organized in a directed acyclic graph (DAG) for publication.
+           |
+           |To resolve:
+           |1. Review the schema references to identify the circular dependency chain
+           |2. Refactor schemas to break the cycle (e.g., extract common types into a separate schema)
+           |3. Ensure dependencies flow in one direction only""".stripMargin
+      }
     }
 
     final case class InvalidSchema(reason: String) extends ApicurioError {

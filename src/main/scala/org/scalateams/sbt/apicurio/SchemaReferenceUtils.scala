@@ -382,63 +382,65 @@ object SchemaReferenceUtils {
   ): ApicurioResult[List[ApicurioDependency]] = {
 
     val key = s"$groupId:$artifactId:$version"
+
+    // Guard against circular dependencies - purely functional, no early return
     if (visited.contains(key)) {
-      return Right(List.empty)
-    }
+      Right(List.empty)
+    } else {
+      logger.debug(s"Fetching dependencies for $key")
 
-    logger.debug(s"Fetching dependencies for $key")
+      client.getVersionContent(groupId, artifactId, version) match {
+        case Right(content) =>
+          // Detect references in the content
+          val artifactType = client.getArtifactMetadata(groupId, artifactId) match {
+            case Right(metadata) => ArtifactType.fromString(metadata.artifactType)
+            case Left(_)         => None
+          }
 
-    client.getVersionContent(groupId, artifactId, version) match {
-      case Right(content) =>
-        // Detect references in the content
-        val artifactType = client.getArtifactMetadata(groupId, artifactId) match {
-          case Right(metadata) => ArtifactType.fromString(metadata.artifactType)
-          case Left(_)         => None
-        }
+          artifactType match {
+            case Some(aType) =>
+              val schemaFile = SchemaFile(
+                file = new java.io.File(artifactId),
+                content = content,
+                hash = "",
+                artifactType = aType
+              )
 
-        artifactType match {
-          case Some(aType) =>
-            val schemaFile = SchemaFile(
-              file = new java.io.File(artifactId),
-              content = content,
-              hash = "",
-              artifactType = aType
-            )
+              val refs = detectReferences(schemaFile, artifactId, logger).references
 
-            val refs = detectReferences(schemaFile, artifactId, logger).references
+              // Recursively get dependencies
+              val deps = refs.flatMap { ref =>
+                ref.artifactId.map { depArtifactId =>
+                  val depGroupId = ref.groupId.getOrElse(groupId)
+                  val depVersion = ref.version.getOrElse("latest")
 
-            // Recursively get dependencies
-            val deps = refs.flatMap { ref =>
-              ref.artifactId.map { depArtifactId =>
-                val depGroupId = ref.groupId.getOrElse(groupId)
-                val depVersion = ref.version.getOrElse("latest")
+                  val transitiveDeps = getTransitiveDependencies(
+                    depGroupId,
+                    depArtifactId,
+                    depVersion,
+                    client,
+                    logger,
+                    visited + key
+                  ) match {
+                    case Right(deps) => deps
+                    case Left(err)   =>
+                      logger.warn(s"Failed to fetch transitive dependencies for $depArtifactId: ${err.message}")
+                      List.empty
+                  }
 
-                val transitiveDeps = getTransitiveDependencies(
-                  depGroupId,
-                  depArtifactId,
-                  depVersion,
-                  client,
-                  logger,
-                  visited + key
-                ) match {
-                  case Right(deps) => deps
-                  case Left(err)   =>
-                    logger.warn(s"Failed to fetch transitive dependencies for $depArtifactId: ${err.message}")
-                    List.empty
+                  ApicurioDependency(depGroupId, depArtifactId, depVersion) :: transitiveDeps
                 }
+              }.flatten
 
-                ApicurioDependency(depGroupId, depArtifactId, depVersion) :: transitiveDeps
-              }
-            }.flatten
+              Right(deps.distinct)
 
-            Right(deps.distinct)
+            case None =>
+              Right(List.empty)
+          }
 
-          case None =>
-            Right(List.empty)
-        }
-
-      case Left(err) =>
-        Left(err)
+        case Left(err) =>
+          Left(err)
+      }
     }
   }
 }
