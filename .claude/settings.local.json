@@ -6,7 +6,8 @@
       "Bash(sbt clean compile:*)",
       "Bash(awk:*)",
       "Bash(sbt publishLocal)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(sbt test)"
     ],
     "deny": [],
     "ask": []

@@ -10,23 +10,23 @@ object ApicurioModels {
   }
 
   object CompatibilityLevel {
-    case object Backward extends CompatibilityLevel { val value = "BACKWARD" }
+    case object Backward           extends CompatibilityLevel { val value = "BACKWARD"            }
     case object BackwardTransitive extends CompatibilityLevel { val value = "BACKWARD_TRANSITIVE" }
-    case object Forward extends CompatibilityLevel { val value = "FORWARD" }
-    case object ForwardTransitive extends CompatibilityLevel { val value = "FORWARD_TRANSITIVE" }
-    case object Full extends CompatibilityLevel { val value = "FULL" }
-    case object FullTransitive extends CompatibilityLevel { val value = "FULL_TRANSITIVE" }
-    case object None extends CompatibilityLevel { val value = "NONE" }
+    case object Forward            extends CompatibilityLevel { val value = "FORWARD"             }
+    case object ForwardTransitive  extends CompatibilityLevel { val value = "FORWARD_TRANSITIVE"  }
+    case object Full               extends CompatibilityLevel { val value = "FULL"                }
+    case object FullTransitive     extends CompatibilityLevel { val value = "FULL_TRANSITIVE"     }
+    case object None               extends CompatibilityLevel { val value = "NONE"                }
 
     def fromString(s: String): Option[CompatibilityLevel] = s.toUpperCase match {
-      case "BACKWARD" => Some(Backward)
+      case "BACKWARD"            => Some(Backward)
       case "BACKWARD_TRANSITIVE" => Some(BackwardTransitive)
-      case "FORWARD" => Some(Forward)
-      case "FORWARD_TRANSITIVE" => Some(ForwardTransitive)
-      case "FULL" => Some(Full)
-      case "FULL_TRANSITIVE" => Some(FullTransitive)
-      case "NONE" => Some(None)
-      case _ => scala.None
+      case "FORWARD"             => Some(Forward)
+      case "FORWARD_TRANSITIVE"  => Some(ForwardTransitive)
+      case "FULL"                => Some(Full)
+      case "FULL_TRANSITIVE"     => Some(FullTransitive)
+      case "NONE"                => Some(None)
+      case _                     => scala.None
     }
   }
 
@@ -35,27 +35,27 @@ object ApicurioModels {
   }
 
   object ArtifactType {
-    case object Avro extends ArtifactType { val value = "AVRO" }
-    case object Protobuf extends ArtifactType { val value = "PROTOBUF" }
-    case object JsonSchema extends ArtifactType { val value = "JSON" }
-    case object OpenApi extends ArtifactType { val value = "OPENAPI" }
-    case object AsyncApi extends ArtifactType { val value = "ASYNCAPI" }
+    case object Avro       extends ArtifactType { val value = "AVRO"     }
+    case object Protobuf   extends ArtifactType { val value = "PROTOBUF" }
+    case object JsonSchema extends ArtifactType { val value = "JSON"     }
+    case object OpenApi    extends ArtifactType { val value = "OPENAPI"  }
+    case object AsyncApi   extends ArtifactType { val value = "ASYNCAPI" }
 
     def fromExtension(ext: String): Option[ArtifactType] = ext.toLowerCase match {
       case "avsc" | "avro" => Some(Avro)
-      case "proto" => Some(Protobuf)
-      case "json" => Some(JsonSchema)
-      case "yaml" | "yml" => Some(OpenApi) // Could be AsyncAPI too, will need content inspection
-      case _ => scala.None
+      case "proto"         => Some(Protobuf)
+      case "json"          => Some(JsonSchema)
+      case "yaml" | "yml"  => Some(OpenApi) // Could be AsyncAPI too, will need content inspection
+      case _               => scala.None
     }
 
     def fromString(s: String): Option[ArtifactType] = s.toUpperCase match {
-      case "AVRO" => Some(Avro)
+      case "AVRO"     => Some(Avro)
       case "PROTOBUF" => Some(Protobuf)
-      case "JSON" => Some(JsonSchema)
-      case "OPENAPI" => Some(OpenApi)
+      case "JSON"     => Some(JsonSchema)
+      case "OPENAPI"  => Some(OpenApi)
       case "ASYNCAPI" => Some(AsyncApi)
-      case _ => scala.None
+      case _          => scala.None
     }
   }
 
@@ -70,8 +70,7 @@ object ApicurioModels {
     modifiedOn: Option[String] = None,
     name: Option[String] = None,
     description: Option[String] = None,
-    labels: Option[Map[String, String]] = None
-  )
+    labels: Option[Map[String, String]] = None)
 
   object ArtifactMetadata {
     implicit val decoder: Decoder[ArtifactMetadata] = deriveDecoder
@@ -81,8 +80,7 @@ object ApicurioModels {
   // Response from POST /groups/{groupId}/artifacts (contains both artifact and version)
   case class CreateArtifactResponse(
     artifact: ArtifactMetadata,
-    version: VersionMetadata
-  )
+    version: VersionMetadata)
 
   object CreateArtifactResponse {
     implicit val decoder: Decoder[CreateArtifactResponse] = deriveDecoder
@@ -93,8 +91,7 @@ object ApicurioModels {
     artifactType: String,
     firstVersion: FirstVersionRequest,
     name: Option[String] = None,
-    description: Option[String] = None
-  )
+    description: Option[String] = None)
 
   object CreateArtifactRequest {
     implicit val encoder: Encoder[CreateArtifactRequest] = deriveEncoder
@@ -104,8 +101,7 @@ object ApicurioModels {
     version: Option[String] = None,
     content: ContentRequest,
     name: Option[String] = None,
-    description: Option[String] = None
-  )
+    description: Option[String] = None)
 
   object FirstVersionRequest {
     implicit val encoder: Encoder[FirstVersionRequest] = deriveEncoder
@@ -114,8 +110,7 @@ object ApicurioModels {
   case class ContentRequest(
     content: String,
     contentType: String = "application/json",
-    references: List[ContentReference] = List.empty
-  )
+    references: List[ContentReference] = List.empty)
 
   object ContentRequest {
     implicit val encoder: Encoder[ContentRequest] = deriveEncoder
@@ -125,8 +120,7 @@ object ApicurioModels {
     groupId: Option[String] = None,
     artifactId: String,
     version: Option[String] = None,
-    name: String
-  )
+    name: String)
 
   object ContentReference {
     implicit val encoder: Encoder[ContentReference] = deriveEncoder
@@ -136,8 +130,7 @@ object ApicurioModels {
     version: Option[String] = None,
     content: ContentRequest,
     name: Option[String] = None,
-    description: Option[String] = None
-  )
+    description: Option[String] = None)
 
   object CreateVersionRequest {
     implicit val encoder: Encoder[CreateVersionRequest] = deriveEncoder
@@ -156,8 +149,7 @@ object ApicurioModels {
     owner: Option[String] = None,
     name: Option[String] = None,
     description: Option[String] = None,
-    labels: Option[Map[String, String]] = None
-  )
+    labels: Option[Map[String, String]] = None)
 
   object VersionMetadata {
     implicit val decoder: Decoder[VersionMetadata] = deriveDecoder
@@ -166,8 +158,7 @@ object ApicurioModels {
   case class ApicurioDependency(
     groupId: String,
     artifactId: String,
-    version: String
-  ) {
+    version: String) {
     override def toString: String = s"$groupId % $artifactId % $version"
   }
 
@@ -175,26 +166,22 @@ object ApicurioModels {
     file: java.io.File,
     content: String,
     hash: String,
-    artifactType: ArtifactType
-  )
+    artifactType: ArtifactType)
 
   case class CompatibilityCheckResult(
     compatible: Boolean,
-    message: Option[String] = None
-  )
+    message: Option[String] = None)
 
   object CompatibilityCheckResult {
     implicit val decoder: Decoder[CompatibilityCheckResult] = deriveDecoder
   }
 
-  /**
-   * Functional error types for Apicurio operations.
-   * Using Either[ApicurioError, T] instead of Try[T] provides:
-   * - Type safety: All errors are known at compile time
-   * - Composability: Easy to chain operations with flatMap/map
-   * - Explicit error handling: No hidden exceptions
-   * - Better error messages: Structured error information
-   */
+  /** Functional error types for Apicurio operations. Using Either[ApicurioError, T] instead of Try[T] provides:
+    *   - Type safety: All errors are known at compile time
+    *   - Composability: Easy to chain operations with flatMap/map
+    *   - Explicit error handling: No hidden exceptions
+    *   - Better error messages: Structured error information
+    */
   sealed trait ApicurioError {
     def message: String
   }
@@ -204,11 +191,19 @@ object ApicurioModels {
       def message: String = s"Artifact not found: $groupId:$artifactId"
     }
 
-    final case class VersionNotFound(groupId: String, artifactId: String, version: String) extends ApicurioError {
+    final case class VersionNotFound(
+      groupId: String,
+      artifactId: String,
+      version: String)
+        extends ApicurioError {
       def message: String = s"Version not found: $groupId:$artifactId:$version"
     }
 
-    final case class IncompatibleSchema(groupId: String, artifactId: String, reason: String) extends ApicurioError {
+    final case class IncompatibleSchema(
+      groupId: String,
+      artifactId: String,
+      reason: String)
+        extends ApicurioError {
       def message: String = s"Schema is not compatible with existing versions: $groupId:$artifactId - $reason"
     }
 
@@ -237,8 +232,7 @@ object ApicurioModels {
     }
   }
 
-  /**
-   * Type alias for Either-based results
-   */
+  /** Type alias for Either-based results
+    */
   type ApicurioResult[T] = Either[ApicurioError, T]
 }
