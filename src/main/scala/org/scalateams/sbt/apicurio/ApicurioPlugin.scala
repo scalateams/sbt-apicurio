@@ -276,17 +276,10 @@ object ApicurioPlugin extends AutoPlugin {
                 (for {
                   metadata <- client.getArtifactMetadata(dep.groupId, dep.artifactId)
                   artifactType = ArtifactType.fromString(metadata.artifactType).getOrElse(ArtifactType.JsonSchema)
-                  content <- client.getVersionContent(dep.groupId, dep.artifactId, version)
-                  // Determine content type - Apicurio typically returns schemas in their native format
-                  // Proto files are returned as application/x-protobuf, YAML as application/x-yaml, etc.
-                  contentType = artifactType match {
-                    case ArtifactType.Protobuf                        => "application/x-protobuf"
-                    case ArtifactType.OpenApi | ArtifactType.AsyncApi =>
-                      // OpenAPI/AsyncAPI could be JSON or YAML - we default to JSON unless detected
-                      if (content.trim.startsWith("{") || content.trim.startsWith("[")) "application/json"
-                      else "application/x-yaml"
-                    case _                                            => "application/json"
-                  }
+                  // Get content with Content-Type from HTTP response headers
+                  // This is more efficient than parsing content and avoids trimming large schemas
+                  contentWithType <- client.getVersionContentWithType(dep.groupId, dep.artifactId, version)
+                  (content, contentType) = contentWithType
                   file <- SchemaFileUtils.saveSchema(outputDir, dep, content, contentType, artifactType, log)
                 } yield file) match {
                   case Right(file) =>

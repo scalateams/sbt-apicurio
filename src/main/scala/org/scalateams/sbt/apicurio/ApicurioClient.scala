@@ -126,32 +126,40 @@ class ApicurioClient(
     )
   }
 
-  /** Get specific version content
+  /** Get specific version content with content-type from response headers
     */
-  def getVersionContent(
+  def getVersionContentWithType(
     groupId: String,
     artifactId: String,
     version: String
-  ): ApicurioResult[String] =
+  ): ApicurioResult[(String, String)] =
     // If "latest" is requested, resolve it to the actual latest version number first
     if (version == "latest") {
       getLatestVersion(groupId, artifactId).flatMap { latestVersionMeta =>
-        getVersionContent(groupId, artifactId, latestVersionMeta.version)
+        getVersionContentWithType(groupId, artifactId, latestVersionMeta.version)
       }
     } else {
       val url = uri"$baseUri/groups/$groupId/artifacts/$artifactId/versions/$version/content"
 
-      logger.debug(s"Getting version content: $groupId:$artifactId:$version")
+      logger.debug(s"Getting version content with type: $groupId:$artifactId:$version")
 
       val request = basicRequest
         .get(url)
-        .headers(authHeaders ++ Map("Accept" -> "application/json"))
+        .headers(authHeaders)
         .response(asString)
 
       Try {
         val response = request.send(backend)
         response.body match {
-          case Right(content)                           => Right(content)
+          case Right(content)                           =>
+            // Extract Content-Type from response headers
+            val contentType = response
+              .header("Content-Type")
+              .orElse(response.header("content-type"))
+              .getOrElse("application/json")
+              .split(";")(0)
+              .trim // Only trim the header, not the content
+            Right((content, contentType))
           case Left(error) if response.code.code == 404 =>
             Left(ApicurioError.VersionNotFound(groupId, artifactId, version))
           case Left(error)                              =>
@@ -162,6 +170,15 @@ class ApicurioClient(
         either => either
       )
     }
+
+  /** Get specific version content
+    */
+  def getVersionContent(
+    groupId: String,
+    artifactId: String,
+    version: String
+  ): ApicurioResult[String] =
+    getVersionContentWithType(groupId, artifactId, version).map(_._1)
 
   /** Create a new artifact Returns both artifact and version metadata
     */
