@@ -162,6 +162,13 @@ object ApicurioModels {
     override def toString: String = s"$groupId % $artifactId % $version"
   }
 
+  /** Schema content with metadata for determining file format
+    */
+  case class SchemaContentWithMetadata(
+    content: String,
+    contentType: String,
+    artifactType: ArtifactType)
+
   case class SchemaFile(
     file: java.io.File,
     content: String,
