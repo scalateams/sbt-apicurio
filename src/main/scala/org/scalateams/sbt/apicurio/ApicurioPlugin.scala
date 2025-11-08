@@ -274,8 +274,13 @@ object ApicurioPlugin extends AutoPlugin {
                 val version = if (dep.version == "latest") "latest" else dep.version
 
                 (for {
-                  content <- client.getVersionContent(dep.groupId, dep.artifactId, version)
-                  file    <- SchemaFileUtils.saveSchema(outputDir, dep, content, log)
+                  metadata <- client.getArtifactMetadata(dep.groupId, dep.artifactId)
+                  artifactType = ArtifactType.fromString(metadata.artifactType).getOrElse(ArtifactType.JsonSchema)
+                  // Get content with Content-Type from HTTP response headers
+                  // This is more efficient than parsing content and avoids trimming large schemas
+                  contentWithType <- client.getVersionContentWithType(dep.groupId, dep.artifactId, version)
+                  (content, contentType) = contentWithType
+                  file <- SchemaFileUtils.saveSchema(outputDir, dep, content, contentType, artifactType, log)
                 } yield file) match {
                   case Right(file) =>
                     log.info(s"✓ Pulled: ${dep.groupId}:${dep.artifactId}:${dep.version}")
