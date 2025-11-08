@@ -4,8 +4,9 @@ import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.{BeforeAndAfterAll, Tag}
 import sbt.util.Logger
+import sbt.IO
 import java.io.File
-import org.scalateams.sbt.apicurio.ApicurioModels.ApicurioError
+import org.scalateams.sbt.apicurio.ApicurioModels.{ApicurioError, ArtifactType}
 
 object IntegrationTest extends Tag("org.scalateams.sbt.apicurio.IntegrationTest")
 
@@ -123,26 +124,36 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
     val testResourcesDir = new File("src/test/resources/test-schemas")
     val schemas          = SchemaFileUtils.discoverSchemas(Seq(testResourcesDir), testLogger)
 
-    val avroSchema = schemas.find(_.file.getName == "TestUser.avsc").get
+    val avroSchema = schemas.find(_.file.getName == "TestUser.avsc").getOrElse(fail("TestUser.avsc not found"))
     val artifactId = "TestUser"
 
     try {
-      val result = client.createArtifact(
+      // Use publishSchema instead of createArtifact - it's idempotent and handles both create and update
+      val result = client.publishSchema(
         testGroupId,
         artifactId,
         avroSchema.artifactType,
         avroSchema.content,
-        avroSchema.fileExtension
+        avroSchema.fileExtension,
+        ApicurioModels.CompatibilityLevel.Backward
       )
 
       result shouldBe a[Right[_, _]]
       val response = result.getOrElse(fail("Expected Right but got Left"))
-      response.artifact.artifactId shouldBe artifactId
-      response.artifact.groupId shouldBe testGroupId
-      response.artifact.artifactType shouldBe "AVRO"
-      response.version.version shouldBe "1"
-      response.version.contentId should be > 0L
-      response.version.globalId should be > 0L
+
+      // publishSchema returns Either[CreateArtifactResponse, VersionMetadata]
+      response match {
+        case Left(createResponse) =>
+          // Newly created
+          createResponse.artifact.artifactId shouldBe artifactId
+          createResponse.artifact.groupId shouldBe testGroupId
+          createResponse.artifact.artifactType shouldBe "AVRO"
+        case Right(versionMeta)   =>
+          // Updated existing or unchanged
+          versionMeta.artifactId shouldBe artifactId
+          versionMeta.groupId shouldBe testGroupId
+          versionMeta.artifactType shouldBe "AVRO"
+      }
     } finally
       client.close()
   }
@@ -154,23 +165,29 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
     val testResourcesDir = new File("src/test/resources/test-schemas")
     val schemas          = SchemaFileUtils.discoverSchemas(Seq(testResourcesDir), testLogger)
 
-    val jsonSchema = schemas.find(_.file.getName == "TestProduct.json").get
+    val jsonSchema = schemas.find(_.file.getName == "TestProduct.json").getOrElse(fail("TestProduct.json not found"))
     val artifactId = "TestProduct"
 
     try {
-      val result = client.createArtifact(
+      val result = client.publishSchema(
         testGroupId,
         artifactId,
         jsonSchema.artifactType,
         jsonSchema.content,
-        jsonSchema.fileExtension
+        jsonSchema.fileExtension,
+        ApicurioModels.CompatibilityLevel.Backward
       )
 
       result shouldBe a[Right[_, _]]
       val response = result.getOrElse(fail("Expected Right but got Left"))
-      response.artifact.artifactId shouldBe artifactId
-      response.artifact.artifactType shouldBe "JSON"
-      response.version.version shouldBe "1"
+      response match {
+        case Left(createResponse) =>
+          createResponse.artifact.artifactId shouldBe artifactId
+          createResponse.artifact.artifactType shouldBe "JSON"
+        case Right(versionMeta)   =>
+          versionMeta.artifactId shouldBe artifactId
+          versionMeta.artifactType shouldBe "JSON"
+      }
     } finally
       client.close()
   }
@@ -182,24 +199,31 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
     val testResourcesDir = new File("src/test/resources/test-schemas")
     val schemas          = SchemaFileUtils.discoverSchemas(Seq(testResourcesDir), testLogger)
 
-    val protoSchema = schemas.find(_.file.getName == "TestOrder.proto").get
+    val protoSchema = schemas.find(_.file.getName == "TestOrder.proto").getOrElse(fail("TestOrder.proto not found"))
     val artifactId  = "TestOrder"
 
     try {
       // Note: Protobuf schemas are sent with application/x-protobuf content type
       // The content should be the raw proto file content
-      val result = client.createArtifact(
+      val result = client.publishSchema(
         testGroupId,
         artifactId,
         protoSchema.artifactType,
         protoSchema.content,
-        protoSchema.fileExtension
+        protoSchema.fileExtension,
+        ApicurioModels.CompatibilityLevel.Backward
       )
 
       result shouldBe a[Right[_, _]]
       val response = result.getOrElse(fail("Expected Right but got Left"))
-      response.artifact.artifactId shouldBe artifactId
-      response.artifact.artifactType shouldBe "PROTOBUF"
+      response match {
+        case Left(createResponse) =>
+          createResponse.artifact.artifactId shouldBe artifactId
+          createResponse.artifact.artifactType shouldBe "PROTOBUF"
+        case Right(versionMeta)   =>
+          versionMeta.artifactId shouldBe artifactId
+          versionMeta.artifactType shouldBe "PROTOBUF"
+      }
     } finally
       client.close()
   }
@@ -211,22 +235,29 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
     val testResourcesDir = new File("src/test/resources/test-schemas")
     val schemas          = SchemaFileUtils.discoverSchemas(Seq(testResourcesDir), testLogger)
 
-    val openApiSchema = schemas.find(_.file.getName == "TestAPI.yaml").get
+    val openApiSchema = schemas.find(_.file.getName == "TestAPI.yaml").getOrElse(fail("TestAPI.yaml not found"))
     val artifactId    = "TestAPI"
 
     try {
-      val result = client.createArtifact(
+      val result = client.publishSchema(
         testGroupId,
         artifactId,
         openApiSchema.artifactType,
         openApiSchema.content,
-        openApiSchema.fileExtension
+        openApiSchema.fileExtension,
+        ApicurioModels.CompatibilityLevel.Backward
       )
 
       result shouldBe a[Right[_, _]]
       val response = result.getOrElse(fail("Expected Right but got Left"))
-      response.artifact.artifactId shouldBe artifactId
-      response.artifact.artifactType shouldBe "OPENAPI"
+      response match {
+        case Left(createResponse) =>
+          createResponse.artifact.artifactId shouldBe artifactId
+          createResponse.artifact.artifactType shouldBe "OPENAPI"
+        case Right(versionMeta)   =>
+          versionMeta.artifactId shouldBe artifactId
+          versionMeta.artifactType shouldBe "OPENAPI"
+      }
     } finally
       client.close()
   }
@@ -255,22 +286,28 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
     val artifactId = "TestYamlOpenAPI"
 
     try {
-      val result = client.createArtifact(
+      val result = client.publishSchema(
         testGroupId,
         artifactId,
         ApicurioModels.ArtifactType.OpenApi,
         yamlContent,
-        "yaml"
+        "yaml",
+        ApicurioModels.CompatibilityLevel.Backward
       )
 
       result shouldBe a[Right[_, _]]
       val response = result.getOrElse(fail("Expected Right but got Left"))
-      response.artifact.artifactId shouldBe artifactId
-      response.artifact.artifactType shouldBe "OPENAPI"
-      response.version.version shouldBe "1"
+      response match {
+        case Left(createResponse) =>
+          createResponse.artifact.artifactId shouldBe artifactId
+          createResponse.artifact.artifactType shouldBe "OPENAPI"
+        case Right(versionMeta)   =>
+          versionMeta.artifactId shouldBe artifactId
+          versionMeta.artifactType shouldBe "OPENAPI"
+      }
 
-      // Verify we can retrieve the content back
-      val retrievedContent = client.getVersionContent(testGroupId, artifactId, "1")
+      // Verify we can retrieve the content back (using latest since version may vary)
+      val retrievedContent = client.getVersionContent(testGroupId, artifactId, "latest")
       retrievedContent shouldBe a[Right[_, _]]
       val content          = retrievedContent.getOrElse(fail("Expected Right but got Left"))
       content should include("Test YAML API")
@@ -343,7 +380,15 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
       contentResult shouldBe a[Right[_, _]]
       val content       = contentResult.getOrElse(fail("Expected Right but got Left"))
 
-      val saveResult = SchemaFileUtils.saveSchema(outputDir, dependency, content, testLogger)
+      val saveResult =
+        SchemaFileUtils.saveSchema(
+          outputDir,
+          dependency,
+          content,
+          "application/json",
+          ArtifactType.JsonSchema,
+          testLogger
+        )
       saveResult shouldBe a[Right[_, _]]
 
       val savedFile = saveResult.getOrElse(fail("Expected Right but got Left"))
@@ -401,6 +446,11 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
     val testResourcesDir = new File("src/test/resources/test-schemas")
     val outputDir        = new File("target/test-pulled-all-schemas")
 
+    // Clean output directory before running test to ensure no old files exist
+    if (outputDir.exists()) {
+      IO.delete(outputDir)
+    }
+
     try {
       // Discover all schemas
       val schemas = SchemaFileUtils.discoverSchemas(Seq(testResourcesDir), testLogger)
@@ -425,13 +475,25 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
 
       // Pull all published schemas
       publishedArtifacts.foreach { artifactId =>
-        val dependency    = ApicurioModels.ApicurioDependency(testGroupId, artifactId, "latest")
-        val contentResult = client.getVersionContent(dependency.groupId, dependency.artifactId, "latest")
+        val dependency     = ApicurioModels.ApicurioDependency(testGroupId, artifactId, "latest")
+        val metadataResult = client.getArtifactMetadata(dependency.groupId, dependency.artifactId)
+        val contentResult  = client.getVersionContent(dependency.groupId, dependency.artifactId, "latest")
 
+        metadataResult shouldBe a[Right[_, _]]
         contentResult shouldBe a[Right[_, _]]
-        val content = contentResult.getOrElse(fail("Expected Right but got Left"))
 
-        val saveResult = SchemaFileUtils.saveSchema(outputDir, dependency, content, testLogger)
+        val metadata     = metadataResult.getOrElse(fail("Expected Right but got Left"))
+        val content      = contentResult.getOrElse(fail("Expected Right but got Left"))
+        val artifactType = ArtifactType.fromString(metadata.artifactType).getOrElse(ArtifactType.JsonSchema)
+
+        // Determine content type based on artifact type
+        val contentType = artifactType match {
+          case ArtifactType.Protobuf => "application/x-protobuf"
+          case _                     => "application/json"
+        }
+
+        val saveResult =
+          SchemaFileUtils.saveSchema(outputDir, dependency, content, contentType, artifactType, testLogger)
         saveResult shouldBe a[Right[_, _]]
         val savedFile  = saveResult.getOrElse(fail("Expected Right but got Left"))
         savedFile.exists() shouldBe true

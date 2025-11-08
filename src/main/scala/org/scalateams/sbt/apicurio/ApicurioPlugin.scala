@@ -274,8 +274,20 @@ object ApicurioPlugin extends AutoPlugin {
                 val version = if (dep.version == "latest") "latest" else dep.version
 
                 (for {
+                  metadata <- client.getArtifactMetadata(dep.groupId, dep.artifactId)
+                  artifactType = ArtifactType.fromString(metadata.artifactType).getOrElse(ArtifactType.JsonSchema)
                   content <- client.getVersionContent(dep.groupId, dep.artifactId, version)
-                  file    <- SchemaFileUtils.saveSchema(outputDir, dep, content, log)
+                  // Determine content type - Apicurio typically returns schemas in their native format
+                  // Proto files are returned as application/x-protobuf, YAML as application/x-yaml, etc.
+                  contentType = artifactType match {
+                    case ArtifactType.Protobuf                        => "application/x-protobuf"
+                    case ArtifactType.OpenApi | ArtifactType.AsyncApi =>
+                      // OpenAPI/AsyncAPI could be JSON or YAML - we default to JSON unless detected
+                      if (content.trim.startsWith("{") || content.trim.startsWith("[")) "application/json"
+                      else "application/x-yaml"
+                    case _                                            => "application/json"
+                  }
+                  file <- SchemaFileUtils.saveSchema(outputDir, dep, content, contentType, artifactType, log)
                 } yield file) match {
                   case Right(file) =>
                     log.info(s"✓ Pulled: ${dep.groupId}:${dep.artifactId}:${dep.version}")

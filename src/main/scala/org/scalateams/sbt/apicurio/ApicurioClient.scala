@@ -7,6 +7,7 @@ import sttp.client3._
 import sttp.client3.circe._
 
 import java.security.MessageDigest
+import scala.util.Try
 
 /** Functional resource management for ApicurioClient. Automatically manages backend lifecycle.
   */
@@ -75,7 +76,7 @@ class ApicurioClient(
       .headers(authHeaders)
       .response(asJson[ArtifactMetadata])
 
-    try {
+    Try {
       val response = request.send(backend)
       response.body match {
         case Right(metadata)                          => Right(metadata)
@@ -84,9 +85,10 @@ class ApicurioClient(
         case Left(error)                              =>
           Left(ApicurioError.HttpError(response.code.code, error.getMessage))
       }
-    } catch {
-      case ex: Exception => Left(ApicurioError.NetworkError(ex))
-    }
+    }.fold(
+      ex => Left(ApicurioError.NetworkError(ex)),
+      either => either
+    )
   }
 
   /** Get latest version of an artifact
@@ -101,7 +103,7 @@ class ApicurioClient(
       .headers(authHeaders)
       .response(asString)
 
-    try {
+    Try {
       val response = request.send(backend)
       response.body match {
         case Right(body)                              =>
@@ -118,9 +120,10 @@ class ApicurioClient(
         case Left(error)                              =>
           Left(ApicurioError.HttpError(response.code.code, error))
       }
-    } catch {
-      case ex: Exception => Left(ApicurioError.NetworkError(ex))
-    }
+    }.fold(
+      ex => Left(ApicurioError.NetworkError(ex)),
+      either => either
+    )
   }
 
   /** Get specific version content
@@ -145,7 +148,7 @@ class ApicurioClient(
         .headers(authHeaders ++ Map("Accept" -> "application/json"))
         .response(asString)
 
-      try {
+      Try {
         val response = request.send(backend)
         response.body match {
           case Right(content)                           => Right(content)
@@ -154,9 +157,10 @@ class ApicurioClient(
           case Left(error)                              =>
             Left(ApicurioError.HttpError(response.code.code, error))
         }
-      } catch {
-        case ex: Exception => Left(ApicurioError.NetworkError(ex))
-      }
+      }.fold(
+        ex => Left(ApicurioError.NetworkError(ex)),
+        either => either
+      )
     }
 
   /** Create a new artifact Returns both artifact and version metadata
@@ -175,49 +179,53 @@ class ApicurioClient(
 
     // Validate content is valid JSON for JSON-based schema types
     // Protobuf schemas and YAML files are not JSON, so skip validation for those
-    if (artifactType != ArtifactType.Protobuf && !isYamlExtension(fileExtension)) {
-      parse(content) match {
-        case Left(error) =>
-          return Left(ApicurioError.InvalidSchema(s"Failed to parse schema content as JSON: ${error.getMessage}"))
-        case Right(_)    => // Valid JSON, continue
+    val validationResult: Either[ApicurioError, Unit] =
+      if (artifactType != ArtifactType.Protobuf && !isYamlExtension(fileExtension)) {
+        parse(content).left
+          .map(error => ApicurioError.InvalidSchema(s"Failed to parse schema content as JSON: ${error.getMessage}"))
+          .map(_ => ())
+      } else {
+        Right(())
       }
-    }
 
-    // Create the request body according to Apicurio 3.x API spec
-    val requestBody = CreateArtifactRequest(
-      artifactId = artifactId,
-      artifactType = artifactType.value,
-      firstVersion = FirstVersionRequest(
-        version = None, // Let Apicurio assign version
-        content = ContentRequest(
-          content = content, // Content as string (JSON for most types, raw proto for Protobuf, YAML for YAML files)
-          contentType = contentTypeForFileExtension(fileExtension, artifactType),
-          references = references
+    validationResult.flatMap { _ =>
+      // Create the request body according to Apicurio 3.x API spec
+      val requestBody = CreateArtifactRequest(
+        artifactId = artifactId,
+        artifactType = artifactType.value,
+        firstVersion = FirstVersionRequest(
+          version = None, // Let Apicurio assign version
+          content = ContentRequest(
+            content = content, // Content as string (JSON for most types, raw proto for Protobuf, YAML for YAML files)
+            contentType = contentTypeForFileExtension(fileExtension, artifactType),
+            references = references
+          )
         )
       )
-    )
 
-    if (references.nonEmpty) {
-      logger.debug(
-        s"Creating artifact with ${references.size} reference(s): ${references.map(_.artifactId).mkString(", ")}"
-      )
-    }
-
-    val request = basicRequest
-      .post(url)
-      .headers(authHeaders ++ Map("Content-Type" -> "application/json"))
-      .body(requestBody)
-      .response(asJson[CreateArtifactResponse])
-
-    try {
-      val response = request.send(backend)
-      response.body match {
-        case Right(createResponse) => Right(createResponse)
-        case Left(error)           =>
-          Left(ApicurioError.HttpError(response.code.code, error.getMessage))
+      if (references.nonEmpty) {
+        logger.debug(
+          s"Creating artifact with ${references.size} reference(s): ${references.map(_.artifactId).mkString(", ")}"
+        )
       }
-    } catch {
-      case ex: Exception => Left(ApicurioError.NetworkError(ex))
+
+      val request = basicRequest
+        .post(url)
+        .headers(authHeaders ++ Map("Content-Type" -> "application/json"))
+        .body(requestBody)
+        .response(asJson[CreateArtifactResponse])
+
+      Try {
+        val response = request.send(backend)
+        response.body match {
+          case Right(createResponse) => Right(createResponse)
+          case Left(error)           =>
+            Left(ApicurioError.HttpError(response.code.code, error.getMessage))
+        }
+      }.fold(
+        ex => Left(ApicurioError.NetworkError(ex)),
+        either => either
+      )
     }
   }
 
@@ -242,47 +250,51 @@ class ApicurioClient(
     val isProtobuf   = artifactType.contains(ArtifactType.Protobuf)
 
     // Validate content is valid JSON for JSON-based schema types
-    if (!isProtobuf && !isYamlExtension(fileExtension)) {
-      parse(content) match {
-        case Left(error) =>
-          return Left(ApicurioError.InvalidSchema(s"Failed to parse schema content as JSON: ${error.getMessage}"))
-        case Right(_)    => // Valid JSON, continue
+    val validationResult: Either[ApicurioError, Unit] =
+      if (!isProtobuf && !isYamlExtension(fileExtension)) {
+        parse(content).left
+          .map(error => ApicurioError.InvalidSchema(s"Failed to parse schema content as JSON: ${error.getMessage}"))
+          .map(_ => ())
+      } else {
+        Right(())
       }
-    }
 
-    // Create the request body according to Apicurio 3.x API spec
-    val requestBody = CreateVersionRequest(
-      version = None, // Let Apicurio auto-increment
-      content = ContentRequest(
-        content = content, // Content as string
-        contentType = artifactType
-          .map(contentTypeForFileExtension(fileExtension, _))
-          .getOrElse("application/json"),
-        references = references
+    validationResult.flatMap { _ =>
+      // Create the request body according to Apicurio 3.x API spec
+      val requestBody = CreateVersionRequest(
+        version = None, // Let Apicurio auto-increment
+        content = ContentRequest(
+          content = content, // Content as string
+          contentType = artifactType
+            .map(contentTypeForFileExtension(fileExtension, _))
+            .getOrElse("application/json"),
+          references = references
+        )
       )
-    )
 
-    if (references.nonEmpty) {
-      logger.debug(
-        s"Creating version with ${references.size} reference(s): ${references.map(_.artifactId).mkString(", ")}"
-      )
-    }
-
-    val request = basicRequest
-      .post(url)
-      .headers(authHeaders ++ Map("Content-Type" -> "application/json"))
-      .body(requestBody)
-      .response(asJson[VersionMetadata])
-
-    try {
-      val response = request.send(backend)
-      response.body match {
-        case Right(metadata) => Right(metadata)
-        case Left(error)     =>
-          Left(ApicurioError.HttpError(response.code.code, error.getMessage))
+      if (references.nonEmpty) {
+        logger.debug(
+          s"Creating version with ${references.size} reference(s): ${references.map(_.artifactId).mkString(", ")}"
+        )
       }
-    } catch {
-      case ex: Exception => Left(ApicurioError.NetworkError(ex))
+
+      val request = basicRequest
+        .post(url)
+        .headers(authHeaders ++ Map("Content-Type" -> "application/json"))
+        .body(requestBody)
+        .response(asJson[VersionMetadata])
+
+      Try {
+        val response = request.send(backend)
+        response.body match {
+          case Right(metadata) => Right(metadata)
+          case Left(error)     =>
+            Left(ApicurioError.HttpError(response.code.code, error.getMessage))
+        }
+      }.fold(
+        ex => Left(ApicurioError.NetworkError(ex)),
+        either => either
+      )
     }
   }
 
@@ -305,7 +317,7 @@ class ApicurioClient(
       .body(s"""{"config":"${compatibilityLevel.value}"}""")
       .response(asString)
 
-    try {
+    Try {
       // Set or update the compatibility rule
       val ruleResponse = setRuleRequest.send(backend)
       if (!ruleResponse.isSuccess && ruleResponse.code.code != 404) {
@@ -338,9 +350,10 @@ class ApicurioClient(
           logger.warn(s"Compatibility check failed: $error")
           Right(false)
       }
-    } catch {
-      case ex: Exception => Left(ApicurioError.NetworkError(ex))
-    }
+    }.fold(
+      ex => Left(ApicurioError.NetworkError(ex)),
+      either => either
+    )
   }
 
   /** Publish a schema - creates artifact if not exists, or creates new version if changed Returns
@@ -427,7 +440,3 @@ class ApicurioClient(
     hash.map("%02x".format(_)).mkString
   }
 }
-
-class ApicurioException(message: String, cause: Throwable = null) extends Exception(message, cause)
-
-class ApicurioNotFoundException(message: String) extends ApicurioException(message)
