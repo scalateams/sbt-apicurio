@@ -23,6 +23,9 @@ object ApicurioPlugin extends AutoPlugin {
     val apicurioPullDependencies   = settingKey[Seq[ApicurioDependency]](
       "List of schema dependencies to pull using schema(groupId, artifactId, version)"
     )
+    val apicurioPullRecursive      = settingKey[Boolean](
+      "Whether to recursively pull transitive schema dependencies (default: false)"
+    )
 
     // Tasks
     val apicurioHelp             = taskKey[Unit]("Display help information about the Apicurio plugin")
@@ -72,6 +75,7 @@ object ApicurioPlugin extends AutoPlugin {
     apicurioSchemaPaths        := Seq(sourceDirectory.value / "main" / "schemas"),
     apicurioPullOutputDir      := target.value / "schemas",
     apicurioPullDependencies   := Seq.empty,
+    apicurioPullRecursive      := false,
 
     // Help task
     apicurioHelp := {
@@ -100,6 +104,7 @@ object ApicurioPlugin extends AutoPlugin {
       log.info("  apicurioSchemaPaths        - Schema file directories (default: src/main/schemas)")
       log.info("  apicurioPullOutputDir      - Output directory for pulled schemas (default: target/schemas)")
       log.info("  apicurioPullDependencies   - Schema dependencies to pull")
+      log.info("  apicurioPullRecursive      - Recursively pull transitive dependencies (default: false)")
       log.info("")
       log.info("SUPPORTED SCHEMA TYPES:")
       log.info("  • Avro         (.avsc, .avro)")
@@ -257,6 +262,7 @@ object ApicurioPlugin extends AutoPlugin {
       val groupId      = apicurioGroupId.?.value
       val outputDir    = apicurioPullOutputDir.value
       val dependencies = apicurioPullDependencies.value
+      val recursive    = apicurioPullRecursive.value
 
       if (dependencies.isEmpty) {
         log.debug("No schema dependencies configured")
@@ -268,9 +274,43 @@ object ApicurioPlugin extends AutoPlugin {
         SchemaFileUtils.validateSettings(url, apiKey, groupId, log) match {
           case Right((validUrl, validApiKey, _)) =>
             ApicurioClient.withClient(validUrl, validApiKey, log) { client =>
-              log.info(s"Pulling ${dependencies.size} schema dependencies from Apicurio Registry")
+              // Expand dependencies recursively if requested
+              val allDependencies = if (recursive) {
+                log.info(s"Resolving transitive dependencies for ${dependencies.size} schema(s)...")
 
-              val pulledFiles = dependencies.flatMap { dep =>
+                val expandedDeps = dependencies.flatMap { dep =>
+                  SchemaReferenceUtils.getTransitiveDependencies(
+                    dep.groupId,
+                    dep.artifactId,
+                    dep.version,
+                    client,
+                    log
+                  ) match {
+                    case Right(transitiveDeps) => dep :: transitiveDeps
+                    case Left(err)             =>
+                      log.warn(
+                        s"Failed to resolve transitive dependencies for ${dep.groupId}:${dep.artifactId}: ${err.message}"
+                      )
+                      List(dep) // Still include the original dependency
+                  }
+                }
+
+                // Deduplicate by (groupId, artifactId, version) tuple
+                val uniqueDeps = expandedDeps
+                  .groupBy(dep => (dep.groupId, dep.artifactId, dep.version))
+                  .values
+                  .map(_.head)
+                  .toSeq
+
+                log.info(s"Expanded to ${uniqueDeps.size} total dependencies (including transitive)")
+                uniqueDeps
+              } else {
+                dependencies
+              }
+
+              log.info(s"Pulling ${allDependencies.size} schema dependencies from Apicurio Registry")
+
+              val pulledFiles = allDependencies.flatMap { dep =>
                 val version = if (dep.version == "latest") "latest" else dep.version
 
                 (for {
@@ -294,7 +334,7 @@ object ApicurioPlugin extends AutoPlugin {
               }
 
               val successCount = pulledFiles.size
-              val failCount    = dependencies.size - successCount
+              val failCount    = allDependencies.size - successCount
 
               if (successCount > 0) {
                 log.info(s"Successfully pulled $successCount schema(s) to $outputDir")
