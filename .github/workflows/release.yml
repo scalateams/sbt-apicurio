@@ -2,8 +2,6 @@ name: Release
 
 on:
   push:
-    branches:
-      - main
     tags:
       - "v*"
 
@@ -11,7 +9,7 @@ jobs:
   release:
     name: Release to Maven Central
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -33,10 +31,18 @@ jobs:
         env:
           PGP_SECRET: ${{ secrets.PGP_SECRET }}
 
-      - name: Release
+      - name: Release to Maven Central
         run: sbt ci-release
         env:
           PGP_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}
           PGP_SECRET: ${{ secrets.PGP_SECRET }}
           SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
           SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
