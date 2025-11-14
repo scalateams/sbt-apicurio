@@ -16,9 +16,10 @@ object ApicurioClient {
   /** Execute an operation with an ApicurioClient, ensuring proper resource cleanup. This is the recommended way to use
     * the client. Uses functional resource management pattern - acquires resource, executes operation, ensures cleanup.
     *
-    * Note: This method uses Try for resource management to ensure the HTTP backend is properly closed. While the
-    * project guidelines prefer Either for error handling, this is a boundary layer for resource lifecycle management
-    * where Try is appropriate. All error handling within operations uses Either[ApicurioError, T].
+    * This method uses Try for resource lifecycle management to ensure the HTTP backend is properly closed. The
+    * operation result is extracted using fold() rather than get() to maintain functional principles. Client close
+    * failures are isolated in their own Try to prevent them from masking operation failures. All error handling within
+    * operations uses Either[ApicurioError, T].
     *
     * @example
     *   {{{ ApicurioClient.withClient(url, apiKey, logger) { client => client.publishSchema(groupId, artifactId,
@@ -32,8 +33,8 @@ object ApicurioClient {
   ): A = {
     val client = new ApicurioClient(registryUrl, apiKey, logger)
     val result = scala.util.Try(f(client))
-    client.close()
-    result.get // Extract value or propagate exception after cleanup
+    scala.util.Try(client.close()) // Always attempt close, isolate failures
+    result.fold(throw _, identity) // Extract value or propagate original exception
   }
 }
 
