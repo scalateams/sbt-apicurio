@@ -111,6 +111,7 @@ sbt apicurioPublish
 | `apicurioSchemaPaths` | `Seq[File]` | `src/main/schemas` | Directories containing schema files |
 | `apicurioPullOutputDir` | `File` | `target/schemas` | Output directory for pulled schemas |
 | `apicurioPullDependencies` | `Seq[ApicurioDependency]` | `Seq.empty` | External schemas to pull |
+| `apicurioPullRecursive` | `Boolean` | `false` | Recursively pull transitive schema dependencies |
 
 ### Compatibility Levels
 
@@ -200,6 +201,23 @@ target/schemas/
 └── com/example/tenant/
     └── TenantCreated.json
 ```
+
+#### Recursive Dependency Pulling
+
+By default, only the explicitly declared schema dependencies are pulled. To also pull their transitive dependencies (schemas that your dependencies reference), enable recursive pulling:
+
+```scala
+apicurioPullRecursive := true
+```
+
+**Example:**
+- You declare a dependency on `OrderPlaced` schema
+- `OrderPlaced` references `Customer` schema
+- `Customer` references `Address` schema
+
+With `apicurioPullRecursive := false` (default): Only `OrderPlaced` is pulled
+
+With `apicurioPullRecursive := true`: All three schemas (`OrderPlaced`, `Customer`, and `Address`) are pulled recursively
 
 ### Custom Schema Locations
 
@@ -313,6 +331,9 @@ apicurioPullDependencies := Seq(
   schema("com.example.order", "OrderPlaced", "latest"),
   schema("com.example.customer", "CustomerUpdated", "5")
 )
+
+// Optional: Recursively pull transitive dependencies
+apicurioPullRecursive := true
 
 // Optional: Hook into CI/CD
 val publishSchemasInCI = taskKey[Unit]("Publish schemas in CI environment")

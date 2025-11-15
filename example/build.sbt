@@ -23,6 +23,9 @@ apicurioSchemaPaths := Seq(
 // Pull dependencies from other services
 apicurioPullDependencies := Seq(
   // Example dependencies - uncomment when registry has these artifacts
-  // "com.example.catalog" % "CatalogItemCreated" % "latest",
-  // "com.example.order" % "OrderPlaced" % "latest"
+  // schema("com.example.catalog", "CatalogItemCreated", "latest"),
+  // schema("com.example.order", "OrderPlaced", "latest")
 )
+
+// Optional: Recursively pull transitive dependencies
+// apicurioPullRecursive := true
