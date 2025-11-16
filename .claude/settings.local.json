@@ -7,7 +7,8 @@
       "Bash(awk:*)",
       "Bash(sbt publishLocal)",
       "WebFetch(domain:github.com)",
-      "Bash(sbt test)"
+      "Bash(sbt test)",
+      "Bash(git pull:*)"
     ],
     "deny": [],
     "ask": []

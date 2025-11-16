@@ -184,6 +184,31 @@ object ApicurioModels {
     implicit val decoder: Decoder[CompatibilityCheckResult] = deriveDecoder
   }
 
+  /** Keycloak OAuth2 configuration for client credentials flow
+    */
+  case class KeycloakConfig(
+    url: String,
+    realm: String,
+    clientId: String,
+    clientSecret: String) {
+
+    /** Constructs the token endpoint URL from the Keycloak base URL and realm */
+    def tokenEndpoint: String = s"$url/realms/$realm/protocol/openid-connect/token"
+  }
+
+  /** OAuth2 token response from Keycloak token endpoint
+    */
+  case class TokenResponse(
+    access_token: String,
+    expires_in: Long,
+    refresh_expires_in: Option[Long] = None,
+    token_type: String,
+    scope: Option[String] = None)
+
+  object TokenResponse {
+    implicit val decoder: Decoder[TokenResponse] = deriveDecoder
+  }
+
   /** Functional error types for Apicurio operations. Using Either[ApicurioError, T] instead of Try[T] provides:
     *   - Type safety: All errors are known at compile time
     *   - Composability: Easy to chain operations with flatMap/map
@@ -248,6 +273,14 @@ object ApicurioModels {
 
     final case class ConfigurationError(reason: String) extends ApicurioError {
       def message: String = s"Configuration error: $reason"
+    }
+
+    final case class AuthenticationError(reason: String, cause: Option[Throwable] = None) extends ApicurioError {
+      def message: String = s"Authentication error: $reason${cause.map(c => s" (${c.getMessage})").getOrElse("")}"
+    }
+
+    final case class TokenRefreshError(reason: String, cause: Option[Throwable] = None) extends ApicurioError {
+      def message: String = s"Token refresh error: $reason${cause.map(c => s" (${c.getMessage})").getOrElse("")}"
     }
   }
 

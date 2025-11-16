@@ -392,6 +392,52 @@ The plugin will:
 2. Detect the reference when publishing
 3. Include the reference metadata with correct groupId
 
+### Recursive Dependency Pulling
+
+By default, the plugin only pulls the schemas you explicitly declare in `apicurioPullDependencies`. However, if those schemas have their own dependencies (transitive dependencies), you may need to enable recursive pulling:
+
+```scala
+apicurioPullRecursive := true
+```
+
+**Example scenario:**
+
+```scala
+// You declare one dependency
+apicurioPullDependencies := Seq(
+  schema("com.example.order", "OrderPlaced", "latest")
+)
+```
+
+If `OrderPlaced` schema references other schemas:
+- `OrderPlaced` → references `Customer`
+- `Customer` → references `Address`
+
+**With `apicurioPullRecursive := false` (default):**
+- Only `OrderPlaced` is pulled
+- If your code or schemas need `Customer` or `Address`, you must explicitly list them in `apicurioPullDependencies`
+
+**With `apicurioPullRecursive := true`:**
+- `OrderPlaced` is pulled
+- The plugin analyzes `OrderPlaced` to find its reference to `Customer`
+- `Customer` is pulled automatically
+- The plugin analyzes `Customer` to find its reference to `Address`
+- `Address` is pulled automatically
+- Result: All three schemas are downloaded
+
+**When to use recursive pulling:**
+
+✅ Use `apicurioPullRecursive := true` when:
+- You're pulling complex schemas with deep dependency chains
+- You want to ensure all transitive dependencies are available
+- You're pulling from external services and want a complete dependency tree
+
+❌ Keep `apicurioPullRecursive := false` when:
+- You only need the top-level schema
+- You want explicit control over which schemas are pulled
+- The referenced schemas are already available locally or from another source
+- You want faster pull operations with minimal network requests
+
 ## API Details
 
 ### ContentReference Structure

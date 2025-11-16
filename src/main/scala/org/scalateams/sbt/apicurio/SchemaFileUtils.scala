@@ -93,24 +93,46 @@ object SchemaFileUtils {
     */
   def validateSettings(
     registryUrl: Option[String],
-    apiKey: Option[String],
+    keycloakConfig: Option[KeycloakConfig],
     groupId: Option[String],
     logger: Logger
-  ): Either[String, (String, Option[String], String)] =
-    (registryUrl, groupId) match {
-      case (Some(url), Some(gid)) =>
+  ): Either[String, (String, Option[KeycloakConfig], String)] = {
+    // Validate Keycloak config if provided
+    val keycloakValidation = keycloakConfig match {
+      case Some(config) =>
+        if (config.url.trim.isEmpty) {
+          Left("Keycloak URL is empty in apicurioKeycloakConfig")
+        } else if (config.realm.trim.isEmpty) {
+          Left("Keycloak realm is empty in apicurioKeycloakConfig")
+        } else if (config.clientId.trim.isEmpty) {
+          Left("Keycloak clientId is empty in apicurioKeycloakConfig")
+        } else if (config.clientSecret.trim.isEmpty) {
+          Left("Keycloak clientSecret is empty in apicurioKeycloakConfig")
+        } else {
+          Right(())
+        }
+      case None         =>
+        // No authentication - that's valid for local/open registries
+        Right(())
+    }
+
+    (registryUrl, groupId, keycloakValidation) match {
+      case (Some(url), Some(gid), Right(())) =>
         if (url.trim.isEmpty) {
           Left("apicurioRegistryUrl is empty")
         } else if (gid.trim.isEmpty) {
           Left("apicurioGroupId is empty")
         } else {
-          Right((url, apiKey, gid))
+          Right((url, keycloakConfig, gid))
         }
-      case (None, _)              =>
+      case (None, _, _)                      =>
         Left("apicurioRegistryUrl is not set")
-      case (_, None)              =>
+      case (_, None, _)                      =>
         Left("apicurioGroupId is not set (this is required, no default is provided)")
+      case (_, _, Left(error))               =>
+        Left(error)
     }
+  }
 
   /** Determine file extension based on content-type and artifact type
     */

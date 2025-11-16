@@ -12,9 +12,11 @@ object ApicurioPlugin extends AutoPlugin {
 
   object autoImport {
     // Settings
-    val apicurioRegistryUrl = settingKey[String]("Apicurio Registry base URL (e.g., https://registry.example.com)")
-    val apicurioApiKey      = settingKey[Option[String]]("Optional API key for Apicurio Registry authentication")
-    val apicurioGroupId     = settingKey[String]("Group ID for artifacts (e.g., com.example.yourservice)")
+    val apicurioRegistryUrl    = settingKey[String]("Apicurio Registry base URL (e.g., https://registry.example.com)")
+    val apicurioKeycloakConfig = settingKey[Option[KeycloakConfig]](
+      "Optional Keycloak OAuth2 configuration for authentication (replaces apicurioApiKey)"
+    )
+    val apicurioGroupId        = settingKey[String]("Group ID for artifacts (e.g., com.example.yourservice)")
     val apicurioCompatibilityLevel =
       settingKey[CompatibilityLevel]("Schema compatibility level: Backward, Forward, Full, or None (default: Backward)")
     val apicurioSchemaPaths        =
@@ -37,6 +39,40 @@ object ApicurioPlugin extends AutoPlugin {
     // Re-export models for easy access
     val CompatibilityLevel = ApicurioModels.CompatibilityLevel
     type CompatibilityLevel = ApicurioModels.CompatibilityLevel
+    val KeycloakConfig = ApicurioModels.KeycloakConfig
+    type KeycloakConfig = ApicurioModels.KeycloakConfig
+
+    /** Helper method to create Keycloak configuration for OAuth2 authentication.
+      *
+      * Use this method to configure Keycloak authentication in your build.sbt:
+      *
+      * {{{
+      * apicurioKeycloakConfig := Some(keycloak(
+      *   url = "https://keycloak.example.com",
+      *   realm = "apicurio",
+      *   clientId = sys.env.getOrElse("KEYCLOAK_CLIENT_ID", ""),
+      *   clientSecret = sys.env.getOrElse("KEYCLOAK_CLIENT_SECRET", "")
+      * ))
+      * }}}
+      *
+      * @param url
+      *   Keycloak server URL (e.g., "https://keycloak.example.com")
+      * @param realm
+      *   Keycloak realm name
+      * @param clientId
+      *   OAuth2 client ID (service account)
+      * @param clientSecret
+      *   OAuth2 client secret
+      * @return
+      *   KeycloakConfig for use in apicurioKeycloakConfig
+      */
+    def keycloak(
+      url: String,
+      realm: String,
+      clientId: String,
+      clientSecret: String
+    ): KeycloakConfig =
+      KeycloakConfig(url, realm, clientId, clientSecret)
 
     /** Helper method to create schema dependency declarations without operator conflicts.
       *
@@ -70,7 +106,7 @@ object ApicurioPlugin extends AutoPlugin {
 
   override lazy val projectSettings: Seq[Setting[_]] = Seq(
     // Default settings
-    apicurioApiKey             := None,
+    apicurioKeycloakConfig     := None,
     apicurioCompatibilityLevel := CompatibilityLevel.Backward,
     apicurioSchemaPaths        := Seq(sourceDirectory.value / "main" / "schemas"),
     apicurioPullOutputDir      := target.value / "schemas",
@@ -99,7 +135,7 @@ object ApicurioPlugin extends AutoPlugin {
       log.info("SETTINGS:")
       log.info("  apicurioRegistryUrl        - Registry URL (required)")
       log.info("  apicurioGroupId            - Artifact group ID (required)")
-      log.info("  apicurioApiKey             - API key for authentication (optional)")
+      log.info("  apicurioKeycloakConfig     - Keycloak OAuth2 config for authentication (optional)")
       log.info("  apicurioCompatibilityLevel - Schema compatibility level (default: Backward)")
       log.info("  apicurioSchemaPaths        - Schema file directories (default: src/main/schemas)")
       log.info("  apicurioPullOutputDir      - Output directory for pulled schemas (default: target/schemas)")
@@ -126,7 +162,18 @@ object ApicurioPlugin extends AutoPlugin {
       log.info("")
       log.info("  apicurioRegistryUrl := \"https://your-registry.com\"")
       log.info("  apicurioGroupId := \"com.example.yourservice\"")
-      log.info("  apicurioApiKey := sys.env.get(\"APICURIO_API_KEY\")")
+      log.info("")
+      log.info("  // For Keycloak authentication (production):")
+      log.info("  apicurioKeycloakConfig := Some(keycloak(")
+      log.info("    url = \"https://keycloak.example.com\",")
+      log.info("    realm = \"apicurio\",")
+      log.info("    clientId = sys.env.getOrElse(\"KEYCLOAK_CLIENT_ID\", \"\"),")
+      log.info("    clientSecret = sys.env.getOrElse(\"KEYCLOAK_CLIENT_SECRET\", \"\")")
+      log.info("  ))")
+      log.info("")
+      log.info("  // OR for unauthenticated access (local/open registries):")
+      log.info("  apicurioKeycloakConfig := None")
+      log.info("")
       log.info("  apicurioCompatibilityLevel := CompatibilityLevel.Backward")
       log.info("")
       log.info("  apicurioSchemaPaths := Seq(")
@@ -163,17 +210,19 @@ object ApicurioPlugin extends AutoPlugin {
       log.info("")
       log.info("CURRENT CONFIGURATION:")
 
-      val url           = apicurioRegistryUrl.?.value
-      val groupId       = apicurioGroupId.?.value
-      val apiKey        = apicurioApiKey.value
-      val compatLevel   = apicurioCompatibilityLevel.value
-      val schemaPaths   = apicurioSchemaPaths.value
-      val pullOutputDir = apicurioPullOutputDir.value
-      val dependencies  = apicurioPullDependencies.value
+      val url            = apicurioRegistryUrl.?.value
+      val groupId        = apicurioGroupId.?.value
+      val keycloakConfig = apicurioKeycloakConfig.value
+      val compatLevel    = apicurioCompatibilityLevel.value
+      val schemaPaths    = apicurioSchemaPaths.value
+      val pullOutputDir  = apicurioPullOutputDir.value
+      val dependencies   = apicurioPullDependencies.value
 
       log.info(s"  Registry URL:       ${url.getOrElse("[NOT SET - REQUIRED]")}")
       log.info(s"  Group ID:           ${groupId.getOrElse("[NOT SET - REQUIRED]")}")
-      log.info(s"  API Key:            ${if (apiKey.isDefined) "[CONFIGURED]" else "[NOT SET]"}")
+      log.info(
+        s"  Authentication:     ${if (keycloakConfig.isDefined) "[KEYCLOAK CONFIGURED]" else "[UNAUTHENTICATED]"}"
+      )
       log.info(s"  Compatibility:      ${compatLevel.value}")
       log.info(s"  Schema Paths:       ${schemaPaths.mkString(", ")}")
       log.info(s"  Pull Output Dir:    $pullOutputDir")
@@ -187,7 +236,7 @@ object ApicurioPlugin extends AutoPlugin {
 
       log.info("")
 
-      SchemaFileUtils.validateSettings(url, apiKey, groupId, log) match {
+      SchemaFileUtils.validateSettings(url, keycloakConfig, groupId, log) match {
         case Right(_)    =>
           log.info("  Status: ✓ Configuration is valid")
         case Left(error) =>
@@ -224,17 +273,17 @@ object ApicurioPlugin extends AutoPlugin {
 
     // Validation task
     apicurioValidateSettings := {
-      val log     = streams.value.log
-      val url     = apicurioRegistryUrl.?.value
-      val apiKey  = apicurioApiKey.value
-      val groupId = apicurioGroupId.?.value
+      val log            = streams.value.log
+      val url            = apicurioRegistryUrl.?.value
+      val keycloakConfig = apicurioKeycloakConfig.value
+      val groupId        = apicurioGroupId.?.value
 
       log.info("Validating Apicurio plugin configuration...")
-      log.info(s"  Registry URL: ${url.getOrElse("[NOT SET]")}")
-      log.info(s"  Group ID:     ${groupId.getOrElse("[NOT SET]")}")
-      log.info(s"  API Key:      ${if (apiKey.isDefined) "[CONFIGURED]" else "[NOT SET]"}")
+      log.info(s"  Registry URL:    ${url.getOrElse("[NOT SET]")}")
+      log.info(s"  Group ID:        ${groupId.getOrElse("[NOT SET]")}")
+      log.info(s"  Authentication:  ${if (keycloakConfig.isDefined) "[KEYCLOAK CONFIGURED]" else "[UNAUTHENTICATED]"}")
 
-      SchemaFileUtils.validateSettings(url, apiKey, groupId, log) match {
+      SchemaFileUtils.validateSettings(url, keycloakConfig, groupId, log) match {
         case Right((validUrl, _, validGroupId)) =>
           log.info("✓ Configuration is valid")
           log.info(s"  Ready to publish to: $validUrl")
@@ -256,13 +305,13 @@ object ApicurioPlugin extends AutoPlugin {
 
     // Pull task - runs before compile
     apicurioPull := {
-      val log          = streams.value.log
-      val url          = apicurioRegistryUrl.?.value
-      val apiKey       = apicurioApiKey.value
-      val groupId      = apicurioGroupId.?.value
-      val outputDir    = apicurioPullOutputDir.value
-      val dependencies = apicurioPullDependencies.value
-      val recursive    = apicurioPullRecursive.value
+      val log            = streams.value.log
+      val url            = apicurioRegistryUrl.?.value
+      val keycloakConfig = apicurioKeycloakConfig.value
+      val groupId        = apicurioGroupId.?.value
+      val outputDir      = apicurioPullOutputDir.value
+      val dependencies   = apicurioPullDependencies.value
+      val recursive      = apicurioPullRecursive.value
 
       if (dependencies.isEmpty) {
         log.debug("No schema dependencies configured")
@@ -271,9 +320,9 @@ object ApicurioPlugin extends AutoPlugin {
         )
         Seq.empty
       } else {
-        SchemaFileUtils.validateSettings(url, apiKey, groupId, log) match {
-          case Right((validUrl, validApiKey, _)) =>
-            ApicurioClient.withClient(validUrl, validApiKey, log) { client =>
+        SchemaFileUtils.validateSettings(url, keycloakConfig, groupId, log) match {
+          case Right((validUrl, validKeycloakConfig, _)) =>
+            ApicurioClient.withClient(validUrl, validKeycloakConfig, log) { client =>
               // Expand dependencies recursively if requested
               val allDependencies = if (recursive) {
                 log.info(s"Resolving transitive dependencies for ${dependencies.size} schema(s)...")
@@ -345,7 +394,7 @@ object ApicurioPlugin extends AutoPlugin {
 
               pulledFiles
             }
-          case Left(error)                       =>
+          case Left(error)                               =>
             sys.error(s"Cannot pull schemas: $error")
         }
       }
@@ -353,21 +402,21 @@ object ApicurioPlugin extends AutoPlugin {
 
     // Publish task
     apicurioPublish := {
-      val log         = streams.value.log
-      val url         = apicurioRegistryUrl.?.value
-      val apiKey      = apicurioApiKey.value
-      val groupId     = apicurioGroupId.?.value
-      val compatLevel = apicurioCompatibilityLevel.value
-      val schemas     = apicurioDiscoverSchemas.value
+      val log            = streams.value.log
+      val url            = apicurioRegistryUrl.?.value
+      val keycloakConfig = apicurioKeycloakConfig.value
+      val groupId        = apicurioGroupId.?.value
+      val compatLevel    = apicurioCompatibilityLevel.value
+      val schemas        = apicurioDiscoverSchemas.value
 
-      SchemaFileUtils.validateSettings(url, apiKey, groupId, log) match {
-        case Right((validUrl, validApiKey, validGroupId)) =>
+      SchemaFileUtils.validateSettings(url, keycloakConfig, groupId, log) match {
+        case Right((validUrl, validKeycloakConfig, validGroupId)) =>
           if (schemas.isEmpty) {
             log.warn("No schemas found to publish")
             log.info("Tip: Check your apicurioSchemaPaths setting or run 'sbt apicurioDiscoverSchemas'")
             log.info("Default schema path: src/main/schemas")
           } else {
-            ApicurioClient.withClient(validUrl, validApiKey, log) { client =>
+            ApicurioClient.withClient(validUrl, validKeycloakConfig, log) { client =>
               log.info(s"Publishing ${schemas.size} schemas to Apicurio Registry")
               log.info(s"Group ID: $validGroupId")
               log.info(s"Compatibility Level: ${compatLevel.value}")
@@ -527,7 +576,7 @@ object ApicurioPlugin extends AutoPlugin {
               }
             }
           }
-        case Left(error)                                  =>
+        case Left(error)                                          =>
           sys.error(s"Cannot publish schemas: $error")
       }
     },
