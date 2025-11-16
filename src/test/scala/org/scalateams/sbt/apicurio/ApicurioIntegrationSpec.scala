@@ -12,17 +12,26 @@ object IntegrationTest extends Tag("org.scalateams.sbt.apicurio.IntegrationTest"
 
 /** Integration tests for Apicurio plugin.
   *
-  * These tests require a running Apicurio Registry instance. Set environment variables to run: APICURIO_TEST_URL -
-  * Registry URL (default: http://localhost:8080) APICURIO_TEST_API_KEY - Optional API key
+  * These tests require a running Apicurio Registry instance. Set environment variables to run:
+  * - APICURIO_TEST_URL: Registry URL (default: http://localhost:8080/apis/registry/v3)
+  * - KEYCLOAK_URL: Keycloak server URL (for authenticated testing)
+  * - KEYCLOAK_REALM: Keycloak realm name
+  * - KEYCLOAK_CLIENT_ID: Service account client ID
+  * - KEYCLOAK_CLIENT_SECRET: Service account client secret
   *
   * To run: sbt "testOnly *IntegrationSpec" To skip: sbt "testOnly * -- -l org.scalateams.sbt.apicurio.IntegrationTest"
   */
 class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
 
   // Test configuration
-  private val registryUrl = sys.env.getOrElse("APICURIO_TEST_URL", "http://localhost:8080/apis/registry/v3")
-  private val apiKey      = sys.env.get("APICURIO_TEST_API_KEY")
-  private val testGroupId = "com.example"
+  private val registryUrl    = sys.env.getOrElse("APICURIO_TEST_URL", "http://localhost:8080/apis/registry/v3")
+  private val keycloakConfig = for {
+    url          <- sys.env.get("KEYCLOAK_URL")
+    realm        <- sys.env.get("KEYCLOAK_REALM")
+    clientId     <- sys.env.get("KEYCLOAK_CLIENT_ID")
+    clientSecret <- sys.env.get("KEYCLOAK_CLIENT_SECRET")
+  } yield ApicurioModels.KeycloakConfig(url, realm, clientId, clientSecret)
+  private val testGroupId    = "com.example"
 
   // Check if Apicurio is available
   private var apicurioAvailable = false
@@ -33,7 +42,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
     super.beforeAll()
     // Check if Apicurio is reachable
     try {
-      val client = new ApicurioClient(registryUrl, apiKey, testLogger)
+      val client = new ApicurioClient(registryUrl, keycloakConfig, testLogger)
       // Try a simple GET to see if it's up
       client.getArtifactMetadata(testGroupId, "non-existent-test") match {
         case Left(_: ApicurioError.ArtifactNotFound) =>
@@ -45,6 +54,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
         case Left(err)                               =>
           println(s"Apicurio not available: ${err.message}")
           println("Skipping integration tests. Set APICURIO_TEST_URL to run tests.")
+          println("For authenticated testing, set KEYCLOAK_* environment variables.")
           apicurioAvailable = false
       }
       client.close()
@@ -120,7 +130,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
   it should "create an Avro artifact in Apicurio" taggedAs IntegrationTest in {
     assumeApicurioAvailable()
 
-    val client           = new ApicurioClient(registryUrl, apiKey, testLogger)
+    val client           = new ApicurioClient(registryUrl, keycloakConfig, testLogger)
     val testResourcesDir = new File("src/test/resources/test-schemas")
     val schemas          = SchemaFileUtils.discoverSchemas(Seq(testResourcesDir), testLogger)
 
@@ -161,7 +171,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
   it should "create a JSON Schema artifact in Apicurio" taggedAs IntegrationTest in {
     assumeApicurioAvailable()
 
-    val client           = new ApicurioClient(registryUrl, apiKey, testLogger)
+    val client           = new ApicurioClient(registryUrl, keycloakConfig, testLogger)
     val testResourcesDir = new File("src/test/resources/test-schemas")
     val schemas          = SchemaFileUtils.discoverSchemas(Seq(testResourcesDir), testLogger)
 
@@ -195,7 +205,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
   it should "create a Protobuf artifact in Apicurio" taggedAs IntegrationTest in {
     assumeApicurioAvailable()
 
-    val client           = new ApicurioClient(registryUrl, apiKey, testLogger)
+    val client           = new ApicurioClient(registryUrl, keycloakConfig, testLogger)
     val testResourcesDir = new File("src/test/resources/test-schemas")
     val schemas          = SchemaFileUtils.discoverSchemas(Seq(testResourcesDir), testLogger)
 
@@ -231,7 +241,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
   it should "create an OpenAPI artifact in Apicurio" taggedAs IntegrationTest in {
     assumeApicurioAvailable()
 
-    val client           = new ApicurioClient(registryUrl, apiKey, testLogger)
+    val client           = new ApicurioClient(registryUrl, keycloakConfig, testLogger)
     val testResourcesDir = new File("src/test/resources/test-schemas")
     val schemas          = SchemaFileUtils.discoverSchemas(Seq(testResourcesDir), testLogger)
 
@@ -265,7 +275,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
   it should "handle YAML OpenAPI schemas with correct content-type" taggedAs IntegrationTest in {
     assumeApicurioAvailable()
 
-    val client = new ApicurioClient(registryUrl, apiKey, testLogger)
+    val client = new ApicurioClient(registryUrl, keycloakConfig, testLogger)
 
     // Actual YAML content to test YAML format handling
     val yamlContent =
@@ -320,7 +330,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
   it should "retrieve artifact metadata" taggedAs IntegrationTest in {
     assumeApicurioAvailable()
 
-    val client = new ApicurioClient(registryUrl, apiKey, testLogger)
+    val client = new ApicurioClient(registryUrl, keycloakConfig, testLogger)
 
     try {
       val result = client.getArtifactMetadata(testGroupId, "TestUser")
@@ -337,7 +347,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
   it should "retrieve version content" taggedAs IntegrationTest in {
     assumeApicurioAvailable()
 
-    val client = new ApicurioClient(registryUrl, apiKey, testLogger)
+    val client = new ApicurioClient(registryUrl, keycloakConfig, testLogger)
 
     try {
       val result = client.getVersionContent(testGroupId, "TestUser", "1")
@@ -353,7 +363,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
   it should "retrieve latest version" taggedAs IntegrationTest in {
     assumeApicurioAvailable()
 
-    val client = new ApicurioClient(registryUrl, apiKey, testLogger)
+    val client = new ApicurioClient(registryUrl, keycloakConfig, testLogger)
 
     try {
       val result = client.getLatestVersion(testGroupId, "TestUser")
@@ -370,7 +380,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
   it should "pull schema content by version" taggedAs IntegrationTest in {
     assumeApicurioAvailable()
 
-    val client    = new ApicurioClient(registryUrl, apiKey, testLogger)
+    val client    = new ApicurioClient(registryUrl, keycloakConfig, testLogger)
     val outputDir = new File("target/test-pulled-schemas")
 
     try {
@@ -401,7 +411,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
   it should "pull latest version when 'latest' is specified" taggedAs IntegrationTest in {
     assumeApicurioAvailable()
 
-    val client = new ApicurioClient(registryUrl, apiKey, testLogger)
+    val client = new ApicurioClient(registryUrl, keycloakConfig, testLogger)
 
     try {
       val result = client.getVersionContent(testGroupId, "TestProduct", "latest")
@@ -418,7 +428,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
   it should "create a new version for existing artifact" taggedAs IntegrationTest in {
     assumeApicurioAvailable()
 
-    val client           = new ApicurioClient(registryUrl, apiKey, testLogger)
+    val client           = new ApicurioClient(registryUrl, keycloakConfig, testLogger)
     val testResourcesDir = new File("src/test/resources/test-schemas")
     val schemas          = SchemaFileUtils.discoverSchemas(Seq(testResourcesDir), testLogger)
 
@@ -442,7 +452,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
   it should "publish and pull all schema types" taggedAs IntegrationTest in {
     assumeApicurioAvailable()
 
-    val client           = new ApicurioClient(registryUrl, apiKey, testLogger)
+    val client           = new ApicurioClient(registryUrl, keycloakConfig, testLogger)
     val testResourcesDir = new File("src/test/resources/test-schemas")
     val outputDir        = new File("target/test-pulled-all-schemas")
 
@@ -517,7 +527,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
   it should "return ArtifactNotFound error for non-existent artifact" taggedAs IntegrationTest in {
     assumeApicurioAvailable()
 
-    val client = new ApicurioClient(registryUrl, apiKey, testLogger)
+    val client = new ApicurioClient(registryUrl, keycloakConfig, testLogger)
 
     try {
       val result = client.getArtifactMetadata(testGroupId, "NonExistentArtifact")
@@ -536,7 +546,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
   it should "return VersionNotFound error for non-existent version" taggedAs IntegrationTest in {
     assumeApicurioAvailable()
 
-    val client = new ApicurioClient(registryUrl, apiKey, testLogger)
+    val client = new ApicurioClient(registryUrl, keycloakConfig, testLogger)
 
     try {
       val result = client.getVersionContent(testGroupId, "TestUser", "999")
@@ -556,7 +566,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
   it should "return InvalidSchema error for malformed JSON" taggedAs IntegrationTest in {
     assumeApicurioAvailable()
 
-    val client = new ApicurioClient(registryUrl, apiKey, testLogger)
+    val client = new ApicurioClient(registryUrl, keycloakConfig, testLogger)
 
     try {
       val invalidJson = "{invalid json"
@@ -746,7 +756,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
   it should "check compatibility for compatible schema changes" taggedAs IntegrationTest in {
     assumeApicurioAvailable()
 
-    val client           = new ApicurioClient(registryUrl, apiKey, testLogger)
+    val client           = new ApicurioClient(registryUrl, keycloakConfig, testLogger)
     val testResourcesDir = new File("src/test/resources/test-schemas")
     val schemas          = SchemaFileUtils.discoverSchemas(Seq(testResourcesDir), testLogger)
 
@@ -782,7 +792,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
     // schemas with proper reference metadata, which is complex to set up correctly
     // in a test environment. The core recursive resolution logic is tested here.
 
-    val client = new ApicurioClient(registryUrl, apiKey, testLogger)
+    val client = new ApicurioClient(registryUrl, keycloakConfig, testLogger)
 
     try {
       // Test with a simple schema that doesn't have complex references
@@ -877,7 +887,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
 
     assumeApicurioAvailable()
 
-    val client = new ApicurioClient(registryUrl, apiKey, testLogger)
+    val client = new ApicurioClient(registryUrl, keycloakConfig, testLogger)
 
     try {
       // Even if schemas reference each other, the visited set should prevent infinite recursion

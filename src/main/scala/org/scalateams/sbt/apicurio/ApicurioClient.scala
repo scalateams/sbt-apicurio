@@ -22,16 +22,16 @@ object ApicurioClient {
     * operations uses Either[ApicurioError, T].
     *
     * @example
-    *   {{{ ApicurioClient.withClient(url, apiKey, logger) { client => client.publishSchema(groupId, artifactId,
+    *   {{{ ApicurioClient.withClient(url, keycloakConfig, logger) { client => client.publishSchema(groupId, artifactId,
     *   artifactType, content, compatLevel) } }}}
     */
   def withClient[A](
     registryUrl: String,
-    apiKey: Option[String],
+    keycloakConfig: Option[KeycloakConfig],
     logger: Logger
   )(f: ApicurioClient => A
   ): A = {
-    val client = new ApicurioClient(registryUrl, apiKey, logger)
+    val client = new ApicurioClient(registryUrl, keycloakConfig, logger)
     val result = scala.util.Try(f(client))
     scala.util.Try(client.close()) // Always attempt close, isolate failures
     result.fold(throw _, identity) // Extract value or propagate original exception
@@ -40,14 +40,23 @@ object ApicurioClient {
 
 class ApicurioClient(
   registryUrl: String,
-  apiKey: Option[String],
+  keycloakConfig: Option[KeycloakConfig],
   logger: Logger) {
 
-  private val backend = HttpURLConnectionBackend()
-  private val baseUri = uri"$registryUrl"
+  private val backend      = HttpURLConnectionBackend()
+  private val baseUri      = uri"$registryUrl"
+  private val tokenManager = keycloakConfig.map(config => new KeycloakTokenManager(config, backend))
 
-  private def authHeaders: Map[String, String] =
-    apiKey.map(key => Map("Authorization" -> s"Bearer $key")).getOrElse(Map.empty)
+  /** Get authentication headers. Returns Either to propagate token errors functionally.
+    */
+  private def authHeaders: ApicurioResult[Map[String, String]] =
+    tokenManager match {
+      case Some(manager) =>
+        manager.getValidToken().map(token => Map("Authorization" -> s"Bearer $token"))
+      case None          =>
+        // No authentication configured
+        Right(Map.empty[String, String])
+    }
 
   private def contentTypeForFileExtension(fileExtension: String, artifactType: ArtifactType): String =
     (fileExtension.toLowerCase, artifactType) match {
@@ -75,24 +84,26 @@ class ApicurioClient(
 
     logger.debug(s"Getting artifact metadata: $groupId:$artifactId")
 
-    val request = basicRequest
-      .get(url)
-      .headers(authHeaders)
-      .response(asJson[ArtifactMetadata])
+    authHeaders.flatMap { headers =>
+      val request = basicRequest
+        .get(url)
+        .headers(headers)
+        .response(asJson[ArtifactMetadata])
 
-    Try {
-      val response = request.send(backend)
-      response.body match {
-        case Right(metadata)                          => Right(metadata)
-        case Left(error) if response.code.code == 404 =>
-          Left(ApicurioError.ArtifactNotFound(groupId, artifactId))
-        case Left(error)                              =>
-          Left(ApicurioError.HttpError(response.code.code, error.getMessage))
-      }
-    }.fold(
-      ex => Left(ApicurioError.NetworkError(ex)),
-      either => either
-    )
+      Try {
+        val response = request.send(backend)
+        response.body match {
+          case Right(metadata)                          => Right(metadata)
+          case Left(error) if response.code.code == 404 =>
+            Left(ApicurioError.ArtifactNotFound(groupId, artifactId))
+          case Left(error)                              =>
+            Left(ApicurioError.HttpError(response.code.code, error.getMessage))
+        }
+      }.fold(
+        ex => Left(ApicurioError.NetworkError(ex)),
+        either => either
+      )
+    }
   }
 
   /** Get latest version of an artifact
@@ -102,32 +113,34 @@ class ApicurioClient(
 
     logger.debug(s"Getting latest version: $groupId:$artifactId")
 
-    val request = basicRequest
-      .get(url)
-      .headers(authHeaders)
-      .response(asString)
+    authHeaders.flatMap { headers =>
+      val request = basicRequest
+        .get(url)
+        .headers(headers)
+        .response(asString)
 
-    Try {
-      val response = request.send(backend)
-      response.body match {
-        case Right(body)                              =>
-          parse(body).flatMap(_.hcursor.downField("versions").as[List[VersionMetadata]]) match {
-            case Right(versions) if versions.nonEmpty =>
-              Right(versions.maxBy(_.version))
-            case Right(_)                             =>
-              Left(ApicurioError.ArtifactNotFound(groupId, artifactId))
-            case Left(error)                          =>
-              Left(ApicurioError.ParseError(s"Failed to parse versions: ${error.getMessage}"))
-          }
-        case Left(error) if response.code.code == 404 =>
-          Left(ApicurioError.ArtifactNotFound(groupId, artifactId))
-        case Left(error)                              =>
-          Left(ApicurioError.HttpError(response.code.code, error))
-      }
-    }.fold(
-      ex => Left(ApicurioError.NetworkError(ex)),
-      either => either
-    )
+      Try {
+        val response = request.send(backend)
+        response.body match {
+          case Right(body)                              =>
+            parse(body).flatMap(_.hcursor.downField("versions").as[List[VersionMetadata]]) match {
+              case Right(versions) if versions.nonEmpty =>
+                Right(versions.maxBy(_.version))
+              case Right(_)                             =>
+                Left(ApicurioError.ArtifactNotFound(groupId, artifactId))
+              case Left(error)                          =>
+                Left(ApicurioError.ParseError(s"Failed to parse versions: ${error.getMessage}"))
+            }
+          case Left(error) if response.code.code == 404 =>
+            Left(ApicurioError.ArtifactNotFound(groupId, artifactId))
+          case Left(error)                              =>
+            Left(ApicurioError.HttpError(response.code.code, error))
+        }
+      }.fold(
+        ex => Left(ApicurioError.NetworkError(ex)),
+        either => either
+      )
+    }
   }
 
   /** Get specific version content with content-type from response headers
@@ -147,32 +160,34 @@ class ApicurioClient(
 
       logger.debug(s"Getting version content with type: $groupId:$artifactId:$version")
 
-      val request = basicRequest
-        .get(url)
-        .headers(authHeaders)
-        .response(asString)
+      authHeaders.flatMap { headers =>
+        val request = basicRequest
+          .get(url)
+          .headers(headers)
+          .response(asString)
 
-      Try {
-        val response = request.send(backend)
-        response.body match {
-          case Right(content)                           =>
-            // Extract Content-Type from response headers
-            val contentType = response
-              .header("Content-Type")
-              .orElse(response.header("content-type"))
-              .getOrElse("application/json")
-              .split(";")(0)
-              .trim // Only trim the header, not the content
-            Right((content, contentType))
-          case Left(error) if response.code.code == 404 =>
-            Left(ApicurioError.VersionNotFound(groupId, artifactId, version))
-          case Left(error)                              =>
-            Left(ApicurioError.HttpError(response.code.code, error))
-        }
-      }.fold(
-        ex => Left(ApicurioError.NetworkError(ex)),
-        either => either
-      )
+        Try {
+          val response = request.send(backend)
+          response.body match {
+            case Right(content)                           =>
+              // Extract Content-Type from response headers
+              val contentType = response
+                .header("Content-Type")
+                .orElse(response.header("content-type"))
+                .getOrElse("application/json")
+                .split(";")(0)
+                .trim // Only trim the header, not the content
+              Right((content, contentType))
+            case Left(error) if response.code.code == 404 =>
+              Left(ApicurioError.VersionNotFound(groupId, artifactId, version))
+            case Left(error)                              =>
+              Left(ApicurioError.HttpError(response.code.code, error))
+          }
+        }.fold(
+          ex => Left(ApicurioError.NetworkError(ex)),
+          either => either
+        )
+      }
     }
 
   /** Get specific version content
@@ -230,23 +245,25 @@ class ApicurioClient(
         )
       }
 
-      val request = basicRequest
-        .post(url)
-        .headers(authHeaders ++ Map("Content-Type" -> "application/json"))
-        .body(requestBody)
-        .response(asJson[CreateArtifactResponse])
+      authHeaders.flatMap { headers =>
+        val request = basicRequest
+          .post(url)
+          .headers(headers ++ Map("Content-Type" -> "application/json"))
+          .body(requestBody)
+          .response(asJson[CreateArtifactResponse])
 
-      Try {
-        val response = request.send(backend)
-        response.body match {
-          case Right(createResponse) => Right(createResponse)
-          case Left(error)           =>
-            Left(ApicurioError.HttpError(response.code.code, error.getMessage))
-        }
-      }.fold(
-        ex => Left(ApicurioError.NetworkError(ex)),
-        either => either
-      )
+        Try {
+          val response = request.send(backend)
+          response.body match {
+            case Right(createResponse) => Right(createResponse)
+            case Left(error)           =>
+              Left(ApicurioError.HttpError(response.code.code, error.getMessage))
+          }
+        }.fold(
+          ex => Left(ApicurioError.NetworkError(ex)),
+          either => either
+        )
+      }
     }
   }
 
@@ -299,23 +316,25 @@ class ApicurioClient(
         )
       }
 
-      val request = basicRequest
-        .post(url)
-        .headers(authHeaders ++ Map("Content-Type" -> "application/json"))
-        .body(requestBody)
-        .response(asJson[VersionMetadata])
+      authHeaders.flatMap { headers =>
+        val request = basicRequest
+          .post(url)
+          .headers(headers ++ Map("Content-Type" -> "application/json"))
+          .body(requestBody)
+          .response(asJson[VersionMetadata])
 
-      Try {
-        val response = request.send(backend)
-        response.body match {
-          case Right(metadata) => Right(metadata)
-          case Left(error)     =>
-            Left(ApicurioError.HttpError(response.code.code, error.getMessage))
-        }
-      }.fold(
-        ex => Left(ApicurioError.NetworkError(ex)),
-        either => either
-      )
+        Try {
+          val response = request.send(backend)
+          response.body match {
+            case Right(metadata) => Right(metadata)
+            case Left(error)     =>
+              Left(ApicurioError.HttpError(response.code.code, error.getMessage))
+          }
+        }.fold(
+          ex => Left(ApicurioError.NetworkError(ex)),
+          either => either
+        )
+      }
     }
   }
 
@@ -331,50 +350,52 @@ class ApicurioClient(
 
     logger.debug(s"Checking compatibility: $groupId:$artifactId (${compatibilityLevel.value})")
 
-    // First, ensure the compatibility rule is set
-    val setRuleRequest = basicRequest
-      .put(url)
-      .headers(authHeaders ++ Map("Content-Type" -> "application/json"))
-      .body(s"""{"config":"${compatibilityLevel.value}"}""")
-      .response(asString)
-
-    Try {
-      // Set or update the compatibility rule
-      val ruleResponse = setRuleRequest.send(backend)
-      if (!ruleResponse.isSuccess && ruleResponse.code.code != 404) {
-        logger.warn(s"Failed to set compatibility rule: ${ruleResponse.body}")
-      }
-
-      // Now test compatibility
-      val testUrl     = uri"$baseUri/groups/$groupId/artifacts/$artifactId/rules/COMPATIBILITY/test"
-      val testRequest = basicRequest
-        .post(testUrl)
-        .headers(authHeaders ++ Map("Content-Type" -> "application/json"))
-        .body(content)
+    authHeaders.flatMap { headers =>
+      // First, ensure the compatibility rule is set
+      val setRuleRequest = basicRequest
+        .put(url)
+        .headers(headers ++ Map("Content-Type" -> "application/json"))
+        .body(s"""{"config":"${compatibilityLevel.value}"}""")
         .response(asString)
 
-      val testResponse = testRequest.send(backend)
-      testResponse.body match {
-        case Right(body)                                  =>
-          parse(body).flatMap(_.hcursor.get[Boolean]("compatible")) match {
-            case Right(compatible) => Right(compatible)
-            case Left(_)           =>
-              // If we can't parse the response, assume incompatible
-              logger.warn(s"Could not parse compatibility response, assuming incompatible")
-              Right(false)
-          }
-        case Left(error) if testResponse.code.code == 404 =>
-          // Artifact doesn't exist yet, so it's "compatible"
-          logger.debug(s"Artifact doesn't exist, skipping compatibility check")
-          Right(true)
-        case Left(error)                                  =>
-          logger.warn(s"Compatibility check failed: $error")
-          Right(false)
-      }
-    }.fold(
-      ex => Left(ApicurioError.NetworkError(ex)),
-      either => either
-    )
+      Try {
+        // Set or update the compatibility rule
+        val ruleResponse = setRuleRequest.send(backend)
+        if (!ruleResponse.isSuccess && ruleResponse.code.code != 404) {
+          logger.warn(s"Failed to set compatibility rule: ${ruleResponse.body}")
+        }
+
+        // Now test compatibility
+        val testUrl     = uri"$baseUri/groups/$groupId/artifacts/$artifactId/rules/COMPATIBILITY/test"
+        val testRequest = basicRequest
+          .post(testUrl)
+          .headers(headers ++ Map("Content-Type" -> "application/json"))
+          .body(content)
+          .response(asString)
+
+        val testResponse = testRequest.send(backend)
+        testResponse.body match {
+          case Right(body)                                  =>
+            parse(body).flatMap(_.hcursor.get[Boolean]("compatible")) match {
+              case Right(compatible) => Right(compatible)
+              case Left(_)           =>
+                // If we can't parse the response, assume incompatible
+                logger.warn(s"Could not parse compatibility response, assuming incompatible")
+                Right(false)
+            }
+          case Left(error) if testResponse.code.code == 404 =>
+            // Artifact doesn't exist yet, so it's "compatible"
+            logger.debug(s"Artifact doesn't exist, skipping compatibility check")
+            Right(true)
+          case Left(error)                                  =>
+            logger.warn(s"Compatibility check failed: $error")
+            Right(false)
+        }
+      }.fold(
+        ex => Left(ApicurioError.NetworkError(ex)),
+        either => either
+      )
+    }
   }
 
   /** Publish a schema - creates artifact if not exists, or creates new version if changed Returns

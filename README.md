@@ -15,7 +15,8 @@ An SBT AutoPlugin for integrating with [Apicurio Schema Registry 3.x](https://ww
 - **Compatibility Checking**: Validate schema compatibility before publishing
 - **Schema Dependencies**: Pull schemas from registry before compilation
 - **Multi-Format Support**: Avro, JSON Schema, Protobuf, OpenAPI, AsyncAPI
-- **API Key Authentication**: Secure authentication with Apicurio Registry
+- **Keycloak OAuth2 Authentication**: Secure authentication with Keycloak for production environments
+- **Flexible Authentication**: Optional authentication - use with or without Keycloak
 
 ## Installation
 
@@ -72,8 +73,16 @@ See [HELP_FEATURE.md](HELP_FEATURE.md) for details.
 apicurioRegistryUrl := "https://your-registry.example.com"
 apicurioGroupId := "com.example.myservice"
 
-// Optional: API key for authentication
-apicurioApiKey := Some(sys.env.getOrElse("APICURIO_API_KEY", ""))
+// Option 1: Keycloak OAuth2 authentication (for production)
+apicurioKeycloakConfig := Some(keycloak(
+  url = "https://keycloak.example.com",
+  realm = "apicurio",
+  clientId = sys.env.getOrElse("KEYCLOAK_CLIENT_ID", ""),
+  clientSecret = sys.env.getOrElse("KEYCLOAK_CLIENT_SECRET", "")
+))
+
+// Option 2: Unauthenticated access (for local/open registries)
+apicurioKeycloakConfig := None
 ```
 
 ### Place your schemas
@@ -106,11 +115,12 @@ sbt apicurioPublish
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| `apicurioApiKey` | `Option[String]` | `None` | API key for registry authentication |
+| `apicurioKeycloakConfig` | `Option[KeycloakConfig]` | `None` | Keycloak OAuth2 configuration for authentication |
 | `apicurioCompatibilityLevel` | `CompatibilityLevel` | `BACKWARD` | Schema compatibility level |
 | `apicurioSchemaPaths` | `Seq[File]` | `src/main/schemas` | Directories containing schema files |
 | `apicurioPullOutputDir` | `File` | `target/schemas` | Output directory for pulled schemas |
 | `apicurioPullDependencies` | `Seq[ApicurioDependency]` | `Seq.empty` | External schemas to pull |
+| `apicurioPullRecursive` | `Boolean` | `false` | Recursively pull transitive schema dependencies |
 
 ### Compatibility Levels
 
@@ -122,6 +132,110 @@ apicurioCompatibilityLevel := CompatibilityLevel.ForwardTransitive
 apicurioCompatibilityLevel := CompatibilityLevel.Full
 apicurioCompatibilityLevel := CompatibilityLevel.FullTransitive
 apicurioCompatibilityLevel := CompatibilityLevel.None
+```
+
+### Authentication
+
+The plugin supports Keycloak OAuth2 authentication for secure access to Apicurio Registry in production environments. Authentication is **optional** - you can also use the plugin with unauthenticated registries for local development.
+
+#### Keycloak OAuth2 Configuration
+
+When Apicurio Registry is fronted by Keycloak, configure OAuth2 authentication:
+
+```scala
+apicurioKeycloakConfig := Some(keycloak(
+  url = "https://keycloak.example.com",
+  realm = "apicurio",
+  clientId = sys.env.getOrElse("KEYCLOAK_CLIENT_ID", ""),
+  clientSecret = sys.env.getOrElse("KEYCLOAK_CLIENT_SECRET", "")
+))
+```
+
+**How it works:**
+- The plugin uses the OAuth2 **client credentials flow**
+- Automatically requests and caches access tokens
+- Proactively refreshes tokens before expiry (30 seconds buffer)
+- Thread-safe token management for concurrent builds
+- Each API call includes the token in the `Authorization: Bearer <token>` header
+
+**Keycloak Setup Requirements:**
+1. Create a service account client in Keycloak
+2. Grant the service account the `sr-admin` or `sr-developer` role
+3. Use the client ID and secret in your configuration
+4. Store credentials securely (environment variables or secrets management)
+
+**Token Lifecycle:**
+- Tokens typically expire every 5-10 minutes
+- The plugin requests a new token on first use
+- Tokens are cached and reused until near expiry
+- Automatic refresh ensures seamless operation
+
+#### Unauthenticated Access
+
+For local development or open registries without authentication:
+
+```scala
+apicurioKeycloakConfig := None  // Default - no authentication
+```
+
+#### Environment Variables Pattern
+
+**Recommended approach for managing credentials:**
+
+```scala
+// build.sbt
+apicurioKeycloakConfig := {
+  for {
+    url          <- sys.env.get("KEYCLOAK_URL")
+    realm        <- sys.env.get("KEYCLOAK_REALM")
+    clientId     <- sys.env.get("KEYCLOAK_CLIENT_ID")
+    clientSecret <- sys.env.get("KEYCLOAK_CLIENT_SECRET")
+  } yield keycloak(url, realm, clientId, clientSecret)
+}
+```
+
+Then set environment variables:
+```bash
+export KEYCLOAK_URL="https://keycloak.example.com"
+export KEYCLOAK_REALM="apicurio"
+export KEYCLOAK_CLIENT_ID="apicurio-client"
+export KEYCLOAK_CLIENT_SECRET="your-secret-here"
+
+sbt apicurioPublish
+```
+
+**CI/CD Integration:**
+Store credentials as secrets in your CI/CD platform (GitHub Secrets, GitLab CI Variables, etc.) and inject them as environment variables.
+
+#### Example: NoChannel Development Environment
+
+Here's a complete example for the NoChannel development environment:
+
+```scala
+// build.sbt
+apicurioRegistryUrl := "https://apicurio.nochannel-dev.upstart.team/apis/registry/v3"
+apicurioGroupId := "com.upstartcommerce.yourservice"
+
+apicurioKeycloakConfig := Some(keycloak(
+  url = "https://keycloak.nochannel-dev.upstart.team",
+  realm = "registry",
+  clientId = "github-action-apicurio",
+  clientSecret = sys.env.getOrElse("KEYCLOAK_CLIENT_SECRET", "")
+))
+```
+
+Set the secret as an environment variable:
+```bash
+export KEYCLOAK_CLIENT_SECRET="your-secret-here"
+sbt apicurioPublish
+```
+
+For GitHub Actions, add the secret to your repository and reference it:
+```yaml
+- name: Publish Schemas
+  env:
+    KEYCLOAK_CLIENT_SECRET: ${{ secrets.APICURIO_CLIENT_SECRET }}
+  run: sbt apicurioPublish
 ```
 
 ## Usage
@@ -200,6 +314,23 @@ target/schemas/
 └── com/example/tenant/
     └── TenantCreated.json
 ```
+
+#### Recursive Dependency Pulling
+
+By default, only the explicitly declared schema dependencies are pulled. To also pull their transitive dependencies (schemas that your dependencies reference), enable recursive pulling:
+
+```scala
+apicurioPullRecursive := true
+```
+
+**Example:**
+- You declare a dependency on `OrderPlaced` schema
+- `OrderPlaced` references `Customer` schema
+- `Customer` references `Address` schema
+
+With `apicurioPullRecursive := false` (default): Only `OrderPlaced` is pulled
+
+With `apicurioPullRecursive := true`: All three schemas (`OrderPlaced`, `Customer`, and `Address`) are pulled recursively
 
 ### Custom Schema Locations
 
@@ -313,6 +444,9 @@ apicurioPullDependencies := Seq(
   schema("com.example.order", "OrderPlaced", "latest"),
   schema("com.example.customer", "CustomerUpdated", "5")
 )
+
+// Optional: Recursively pull transitive dependencies
+apicurioPullRecursive := true
 
 // Optional: Hook into CI/CD
 val publishSchemasInCI = taskKey[Unit]("Publish schemas in CI environment")

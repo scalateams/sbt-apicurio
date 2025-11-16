@@ -48,6 +48,7 @@ SETTINGS:
   apicurioSchemaPaths        - Schema file directories (default: src/main/schemas)
   apicurioPullOutputDir      - Output directory for pulled schemas (default: target/schemas)
   apicurioPullDependencies   - Schema dependencies to pull
+  apicurioPullRecursive      - Recursively pull transitive dependencies (default: false)
 
 SUPPORTED SCHEMA TYPES:
   • Avro         (.avsc, .avro)
@@ -80,6 +81,8 @@ EXAMPLE CONFIGURATION:
     schema("com.example.catalog", "ProductCreated", "latest"),
     schema("com.example.tenant", "TenantCreated", "3")
   )
+
+  apicurioPullRecursive := true  // Recursively pull transitive dependencies
 
 COMMON WORKFLOWS:
 
