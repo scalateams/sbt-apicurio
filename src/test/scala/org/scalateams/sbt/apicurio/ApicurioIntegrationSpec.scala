@@ -125,6 +125,169 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
     }
   }
 
+  behavior of "SchemaFileUtils - URL Assembly"
+
+  it should "assemble URL with defaults (no port, uses https)" in {
+    val result = SchemaFileUtils.assembleRegistryUrl(
+      Some("https"),
+      Some("registry.example.com"),
+      None,
+      Some("/apis/registry/v3")
+    )
+    result shouldBe Some("https://registry.example.com/apis/registry/v3")
+  }
+
+  it should "assemble URL with custom port" in {
+    val result = SchemaFileUtils.assembleRegistryUrl(
+      Some("https"),
+      Some("registry.example.com"),
+      Some(8080),
+      Some("/apis/registry/v3")
+    )
+    result shouldBe Some("https://registry.example.com:8080/apis/registry/v3")
+  }
+
+  it should "assemble URL with http scheme and default port" in {
+    val result = SchemaFileUtils.assembleRegistryUrl(
+      Some("http"),
+      Some("localhost"),
+      None,
+      Some("/apis/registry/v3")
+    )
+    result shouldBe Some("http://localhost/apis/registry/v3")
+  }
+
+  it should "assemble URL with custom API path" in {
+    val result = SchemaFileUtils.assembleRegistryUrl(
+      Some("https"),
+      Some("registry.example.com"),
+      None,
+      Some("/custom/api/path")
+    )
+    result shouldBe Some("https://registry.example.com/custom/api/path")
+  }
+
+  it should "return None when host is not provided" in {
+    val result = SchemaFileUtils.assembleRegistryUrl(
+      Some("https"),
+      None,
+      Some(8080),
+      Some("/apis/registry/v3")
+    )
+    result shouldBe None
+  }
+
+  it should "use defaults when scheme and apiPath are None" in {
+    val result = SchemaFileUtils.assembleRegistryUrl(
+      None,  // defaults to https
+      Some("registry.example.com"),
+      None,
+      None   // defaults to /apis/registry/v3
+    )
+    result shouldBe Some("https://registry.example.com/apis/registry/v3")
+  }
+
+  behavior of "SchemaFileUtils - Settings Validation"
+
+  it should "validate invalid scheme" in {
+    val result = SchemaFileUtils.validateSettings(
+      Some("ftp"),  // invalid scheme
+      Some("registry.example.com"),
+      None,
+      Some("/apis/registry/v3"),
+      None,
+      Some("com.example.test"),
+      testLogger
+    )
+    result shouldBe a[Left[_, _]]
+    result.left.getOrElse("") should include("Invalid scheme 'ftp'")
+  }
+
+  it should "validate port out of range (too low)" in {
+    val result = SchemaFileUtils.validateSettings(
+      Some("https"),
+      Some("registry.example.com"),
+      Some(0),  // invalid port
+      Some("/apis/registry/v3"),
+      None,
+      Some("com.example.test"),
+      testLogger
+    )
+    result shouldBe a[Left[_, _]]
+    result.left.getOrElse("") should include("Invalid port 0")
+  }
+
+  it should "validate port out of range (too high)" in {
+    val result = SchemaFileUtils.validateSettings(
+      Some("https"),
+      Some("registry.example.com"),
+      Some(65536),  // invalid port
+      Some("/apis/registry/v3"),
+      None,
+      Some("com.example.test"),
+      testLogger
+    )
+    result shouldBe a[Left[_, _]]
+    result.left.getOrElse("") should include("Invalid port 65536")
+  }
+
+  it should "accept valid port range" in {
+    val result = SchemaFileUtils.validateSettings(
+      Some("https"),
+      Some("registry.example.com"),
+      Some(8080),
+      Some("/apis/registry/v3"),
+      None,
+      Some("com.example.test"),
+      testLogger
+    )
+    result shouldBe a[Right[_, _]]
+  }
+
+  it should "fail when host is not provided" in {
+    val result = SchemaFileUtils.validateSettings(
+      Some("https"),
+      None,  // missing host
+      None,
+      Some("/apis/registry/v3"),
+      None,
+      Some("com.example.test"),
+      testLogger
+    )
+    result shouldBe a[Left[_, _]]
+    result.left.getOrElse("") should include("apicurioRegistryHost is not set")
+  }
+
+  it should "fail when groupId is not provided" in {
+    val result = SchemaFileUtils.validateSettings(
+      Some("https"),
+      Some("registry.example.com"),
+      None,
+      Some("/apis/registry/v3"),
+      None,
+      None,  // missing groupId
+      testLogger
+    )
+    result shouldBe a[Left[_, _]]
+    result.left.getOrElse("") should include("apicurioGroupId is not set")
+  }
+
+  it should "accept valid configuration" in {
+    val result = SchemaFileUtils.validateSettings(
+      Some("https"),
+      Some("registry.example.com"),
+      None,
+      Some("/apis/registry/v3"),
+      None,
+      Some("com.example.test"),
+      testLogger
+    )
+    result shouldBe a[Right[_, _]]
+    val (url, _, groupId) = result.getOrElse(fail("Expected Right but got Left"))
+    url shouldBe "https://registry.example.com/apis/registry/v3"
+    groupId shouldBe "com.example.test"
+  }
+
   behavior of "ApicurioClient - Publishing"
 
   it should "create an Avro artifact in Apicurio" taggedAs IntegrationTest in {
