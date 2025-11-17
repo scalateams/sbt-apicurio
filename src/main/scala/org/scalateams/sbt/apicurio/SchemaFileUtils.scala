@@ -105,12 +105,12 @@ object SchemaFileUtils {
   def assembleRegistryUrl(
     scheme: Option[String],
     host: Option[String],
-    port: Option[Option[Int]],
+    port: Option[Int],
     apiPath: Option[String]
   ): Option[String] =
     host.map { h =>
       val s    = scheme.getOrElse("https")
-      val p    = port.flatten match {
+      val p    = port match {
         case Some(portNum) => s":$portNum"
         case None          =>
           // Use scheme default ports - omit from URL for cleanliness
@@ -125,7 +125,7 @@ object SchemaFileUtils {
   def validateSettings(
     scheme: Option[String],
     host: Option[String],
-    port: Option[Option[Int]],
+    port: Option[Int],
     apiPath: Option[String],
     keycloakConfig: Option[KeycloakConfig],
     groupId: Option[String],
@@ -157,7 +157,7 @@ object SchemaFileUtils {
     }
 
     // Validate port if provided
-    val portValidation = port.flatten match {
+    val portValidation = port match {
       case Some(p) if p <= 0 || p > 65535 => Left(s"Invalid port $p - must be between 1 and 65535")
       case _                              => Right(())
     }

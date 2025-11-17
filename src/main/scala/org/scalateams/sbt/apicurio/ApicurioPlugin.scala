@@ -223,7 +223,7 @@ object ApicurioPlugin extends AutoPlugin {
 
       val scheme         = apicurioRegistryScheme.?.value
       val host           = apicurioRegistryHost.?.value
-      val port           = apicurioRegistryPort.?.value
+      val port           = apicurioRegistryPort.value
       val apiPath        = apicurioRegistryApiPath.?.value
       val groupId        = apicurioGroupId.?.value
       val keycloakConfig = apicurioKeycloakConfig.value
@@ -291,7 +291,7 @@ object ApicurioPlugin extends AutoPlugin {
       val log            = streams.value.log
       val scheme         = apicurioRegistryScheme.?.value
       val host           = apicurioRegistryHost.?.value
-      val port           = apicurioRegistryPort.?.value
+      val port           = apicurioRegistryPort.value
       val apiPath        = apicurioRegistryApiPath.?.value
       val keycloakConfig = apicurioKeycloakConfig.value
       val groupId        = apicurioGroupId.?.value
@@ -327,7 +327,7 @@ object ApicurioPlugin extends AutoPlugin {
       val log            = streams.value.log
       val scheme         = apicurioRegistryScheme.?.value
       val host           = apicurioRegistryHost.?.value
-      val port           = apicurioRegistryPort.?.value
+      val port           = apicurioRegistryPort.value
       val apiPath        = apicurioRegistryApiPath.?.value
       val keycloakConfig = apicurioKeycloakConfig.value
       val groupId        = apicurioGroupId.?.value
@@ -427,7 +427,7 @@ object ApicurioPlugin extends AutoPlugin {
       val log            = streams.value.log
       val scheme         = apicurioRegistryScheme.?.value
       val host           = apicurioRegistryHost.?.value
-      val port           = apicurioRegistryPort.?.value
+      val port           = apicurioRegistryPort.value
       val apiPath        = apicurioRegistryApiPath.?.value
       val keycloakConfig = apicurioKeycloakConfig.value
       val groupId        = apicurioGroupId.?.value
