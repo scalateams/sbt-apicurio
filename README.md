@@ -211,19 +211,19 @@ sbt apicurioPublish
 **CI/CD Integration:**
 Store credentials as secrets in your CI/CD platform (GitHub Secrets, GitLab CI Variables, etc.) and inject them as environment variables.
 
-#### Example: NoChannel Development Environment
+#### Complete Example with Environment Variables
 
-Here's a complete example for the NoChannel development environment:
+Here's a complete example configuration:
 
 ```scala
 // build.sbt
-apicurioRegistryUrl := "https://apicurio.nochannel-dev.upstart.team/apis/registry/v3"
-apicurioGroupId := "com.upstartcommerce.yourservice"
+apicurioRegistryUrl := "https://registry.example.com/apis/registry/v3"
+apicurioGroupId := "com.example.myservice"
 
 apicurioKeycloakConfig := Some(keycloak(
-  url = "https://keycloak.nochannel-dev.upstart.team",
+  url = "https://keycloak.example.com",
   realm = "registry",
-  clientId = "github-action-apicurio",
+  clientId = "my-client-id",
   clientSecret = sys.env.getOrElse("KEYCLOAK_CLIENT_SECRET", "")
 ))
 ```
