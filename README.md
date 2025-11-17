@@ -18,6 +18,21 @@ An SBT AutoPlugin for integrating with [Apicurio Schema Registry 3.x](https://ww
 - **Keycloak OAuth2 Authentication**: Secure authentication with Keycloak for production environments
 - **Flexible Authentication**: Optional authentication - use with or without Keycloak
 
+## About This Project
+
+**sbt-apicurio** is an open-source plugin developed through a collaborative approach between human developers and Claude (Anthropic's AI assistant). This hybrid development model combines human expertise in software architecture, domain knowledge, and design decisions with AI-assisted implementation, comprehensive testing, and thorough documentation.
+
+All code, tests, and documentation in this project have been generated through this human-AI collaboration, demonstrating how modern development tools can accelerate the creation of production-quality software while maintaining high standards for code quality, functional programming principles, and comprehensive documentation.
+
+**Development Philosophy:**
+- Human-guided architecture and API design
+- AI-assisted implementation following strict functional programming patterns
+- Comprehensive test coverage (32+ integration tests)
+- Detailed documentation and setup guides
+- Continuous integration ensuring quality and correctness
+
+This collaborative approach enables rapid development cycles while preserving the rigor and thoughtfulness required for reliable build tooling.
+
 ## Installation
 
 This plugin is published to Maven Central. Add it to your `project/plugins.sbt`:
@@ -428,9 +443,18 @@ organization := "com.example"
 enablePlugins(ApicurioPlugin)
 
 // Required Apicurio settings
-apicurioRegistryUrl := "https://registry.example.com"
+apicurioRegistryUrl := "https://registry.example.com/apis/registry/v3"
 apicurioGroupId := "com.example.myservice"
-apicurioApiKey := sys.env.get("APICURIO_API_KEY")
+
+// Keycloak OAuth2 authentication (optional, for production environments)
+apicurioKeycloakConfig := {
+  for {
+    url          <- sys.env.get("KEYCLOAK_URL")
+    realm        <- sys.env.get("KEYCLOAK_REALM")
+    clientId     <- sys.env.get("KEYCLOAK_CLIENT_ID")
+    clientSecret <- sys.env.get("KEYCLOAK_CLIENT_SECRET")
+  } yield keycloak(url, realm, clientId, clientSecret)
+}
 
 // Optional settings
 apicurioCompatibilityLevel := CompatibilityLevel.Backward
@@ -463,15 +487,28 @@ publishSchemasInCI := {
 You can use environment variables for sensitive configuration:
 
 ```scala
-apicurioApiKey := sys.env.get("APICURIO_API_KEY")
-apicurioRegistryUrl := sys.env.getOrElse("APICURIO_URL", "https://default-registry.example.com")
+// Registry URL
+apicurioRegistryUrl := sys.env.getOrElse("APICURIO_REGISTRY_URL", "https://default-registry.example.com/apis/registry/v3")
+
+// Keycloak OAuth2 authentication
+apicurioKeycloakConfig := {
+  for {
+    url          <- sys.env.get("KEYCLOAK_URL")
+    realm        <- sys.env.get("KEYCLOAK_REALM")
+    clientId     <- sys.env.get("KEYCLOAK_CLIENT_ID")
+    clientSecret <- sys.env.get("KEYCLOAK_CLIENT_SECRET")
+  } yield keycloak(url, realm, clientId, clientSecret)
+}
 ```
 
 **CI/CD Example:**
 
 ```bash
-export APICURIO_API_KEY="your-api-key"
-export APICURIO_URL="https://registry.prod.example.com"
+export APICURIO_REGISTRY_URL="https://registry.prod.example.com/apis/registry/v3"
+export KEYCLOAK_URL="https://keycloak.prod.example.com"
+export KEYCLOAK_REALM="registry"
+export KEYCLOAK_CLIENT_ID="github-actions"
+export KEYCLOAK_CLIENT_SECRET="your-client-secret"
 sbt apicurioPublish
 ```
 
