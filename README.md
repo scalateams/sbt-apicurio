@@ -74,8 +74,13 @@ See [HELP_FEATURE.md](HELP_FEATURE.md) for details.
 
 ```scala
 // Required settings
-apicurioRegistryUrl := "https://your-registry.example.com"
+apicurioRegistryHost := "registry.example.com"
 apicurioGroupId := "com.example.myservice"
+
+// Optional - with sensible defaults
+apicurioRegistryScheme := "https"  // default: "https", can be "http" for local dev
+apicurioRegistryPort := None       // default: None (uses 443 for https, 80 for http)
+apicurioRegistryApiPath := "/apis/registry/v3"  // default, usually no need to change
 
 // Option 1: Keycloak OAuth2 authentication (for production)
 apicurioKeycloakConfig := Some(keycloak(
@@ -112,13 +117,16 @@ sbt apicurioPublish
 
 | Setting | Type | Description |
 |---------|------|-------------|
-| `apicurioRegistryUrl` | `String` | URL of your Apicurio Registry instance |
+| `apicurioRegistryHost` | `String` | Hostname of your Apicurio Registry instance (e.g., `registry.example.com`) |
 | `apicurioGroupId` | `String` | Group ID for your schemas (e.g., `com.example.myservice`) |
 
 ### Optional Settings
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
+| `apicurioRegistryScheme` | `String` | `https` | URL scheme: `http` or `https` |
+| `apicurioRegistryPort` | `Option[Int]` | `None` | Port number (uses 443 for https, 80 for http when None) |
+| `apicurioRegistryApiPath` | `String` | `/apis/registry/v3` | API path (usually no need to change) |
 | `apicurioKeycloakConfig` | `Option[KeycloakConfig]` | `None` | Keycloak OAuth2 configuration for authentication |
 | `apicurioCompatibilityLevel` | `CompatibilityLevel` | `BACKWARD` | Schema compatibility level |
 | `apicurioSchemaPaths` | `Seq[File]` | `src/main/schemas` | Directories containing schema files |
@@ -217,8 +225,12 @@ Here's a complete example configuration:
 
 ```scala
 // build.sbt
-apicurioRegistryUrl := "https://registry.example.com/apis/registry/v3"
+apicurioRegistryHost := "registry.example.com"
 apicurioGroupId := "com.example.myservice"
+
+// Optional URL components (shown with defaults)
+// apicurioRegistryScheme := "https"
+// apicurioRegistryPort := None  // uses 443 for https, 80 for http
 
 apicurioKeycloakConfig := Some(keycloak(
   url = "https://keycloak.example.com",
@@ -432,8 +444,12 @@ organization := "com.example"
 enablePlugins(ApicurioPlugin)
 
 // Required Apicurio settings
-apicurioRegistryUrl := "https://registry.example.com/apis/registry/v3"
+apicurioRegistryHost := "registry.example.com"
 apicurioGroupId := "com.example.myservice"
+
+// Optional URL components (using defaults)
+// apicurioRegistryScheme := "https"
+// apicurioRegistryPort := None
 
 // Keycloak OAuth2 authentication (optional, for production environments)
 apicurioKeycloakConfig := {
@@ -476,8 +492,12 @@ publishSchemasInCI := {
 You can use environment variables for sensitive configuration:
 
 ```scala
-// Registry URL
-apicurioRegistryUrl := sys.env.getOrElse("APICURIO_REGISTRY_URL", "https://default-registry.example.com/apis/registry/v3")
+// Registry host
+apicurioRegistryHost := sys.env.getOrElse("APICURIO_REGISTRY_HOST", "registry.example.com")
+
+// Scheme and port for different environments
+apicurioRegistryScheme := sys.env.getOrElse("APICURIO_REGISTRY_SCHEME", "https")
+apicurioRegistryPort := sys.env.get("APICURIO_REGISTRY_PORT").map(_.toInt)
 
 // Keycloak OAuth2 authentication
 apicurioKeycloakConfig := {
@@ -493,7 +513,9 @@ apicurioKeycloakConfig := {
 **CI/CD Example:**
 
 ```bash
-export APICURIO_REGISTRY_URL="https://registry.prod.example.com/apis/registry/v3"
+export APICURIO_REGISTRY_HOST="registry.prod.example.com"
+export APICURIO_REGISTRY_SCHEME="https"
+# APICURIO_REGISTRY_PORT not set - uses default 443 for https
 export KEYCLOAK_URL="https://keycloak.prod.example.com"
 export KEYCLOAK_REALM="registry"
 export KEYCLOAK_CLIENT_ID="github-actions"
