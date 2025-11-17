@@ -20,18 +20,7 @@ An SBT AutoPlugin for integrating with [Apicurio Schema Registry 3.x](https://ww
 
 ## About This Project
 
-**sbt-apicurio** is an open-source plugin developed through a collaborative approach between human developers and Claude (Anthropic's AI assistant). This hybrid development model combines human expertise in software architecture, domain knowledge, and design decisions with AI-assisted implementation, comprehensive testing, and thorough documentation.
-
-All code, tests, and documentation in this project have been generated through this human-AI collaboration, demonstrating how modern development tools can accelerate the creation of production-quality software while maintaining high standards for code quality, functional programming principles, and comprehensive documentation.
-
-**Development Philosophy:**
-- Human-guided architecture and API design
-- AI-assisted implementation following strict functional programming patterns
-- Comprehensive test coverage (32+ integration tests)
-- Detailed documentation and setup guides
-- Continuous integration ensuring quality and correctness
-
-This collaborative approach enables rapid development cycles while preserving the rigor and thoughtfulness required for reliable build tooling.
+This plugin was developed as an experiment to evaluate how effectively an LLM can generate production-quality code from simple requirements with limited direction. The codebase, tests, and documentation were initially produced using Claude (Anthropic's AI assistant).
 
 ## Installation
 
