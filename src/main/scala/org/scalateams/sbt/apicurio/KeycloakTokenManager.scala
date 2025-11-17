@@ -82,8 +82,8 @@ class KeycloakTokenManager(
         .post(uri"$tokenEndpoint")
         .body(
           Map(
-            "grant_type" -> "client_credentials",
-            "client_id" -> config.clientId,
+            "grant_type"    -> "client_credentials",
+            "client_id"     -> config.clientId,
             "client_secret" -> config.clientSecret
           )
         )
@@ -94,12 +94,12 @@ class KeycloakTokenManager(
       response.body match {
         case Right(tokenResponse) =>
           val currentTime = System.currentTimeMillis() / 1000
-          val expiresAt = currentTime + tokenResponse.expires_in
+          val expiresAt   = currentTime + tokenResponse.expires_in
 
           Right(TokenState(tokenResponse.access_token, expiresAt))
 
         case Left(error) =>
-          val statusCode = response.code.code
+          val statusCode   = response.code.code
           val errorMessage = s"Failed to obtain access token (HTTP $statusCode): ${error.getMessage}"
           Left(ApicurioError.AuthenticationError(errorMessage))
       }

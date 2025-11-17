@@ -8,7 +8,19 @@
       "Bash(sbt publishLocal)",
       "WebFetch(domain:github.com)",
       "Bash(sbt test)",
-      "Bash(git pull:*)"
+      "Bash(git pull:*)",
+      "Bash(git commit:*)",
+      "WebSearch",
+      "WebFetch(domain:petstore.swagger.io)",
+      "WebFetch(domain:api.apis.guru)",
+      "Bash(git -C /Users/jwgcooke/upstart/nochannel/sbt-apicurio branch:*)",
+      "Bash(git -C /Users/jwgcooke/upstart/nochannel/sbt-apicurio log --oneline -20)",
+      "Bash(git -C /Users/jwgcooke/upstart/nochannel/sbt-apicurio log main --oneline -10)",
+      "Bash(git -C /Users/jwgcooke/upstart/nochannel/sbt-apicurio tag -l)",
+      "Bash(git -C /Users/jwgcooke/upstart/nochannel/sbt-apicurio log --all --oneline --graph -20)",
+      "Bash(git -C /Users/jwgcooke/upstart/nochannel/sbt-apicurio diff docs/apicurio-pull-recursive-flag main -- README.md)",
+      "Bash(git tag:*)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []
