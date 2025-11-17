@@ -89,10 +89,44 @@ object SchemaFileUtils {
     hash.map("%02x".format(_)).mkString
   }
 
+  /** Assemble registry URL from components.
+    *
+    * @param scheme
+    *   URL scheme (http or https), default: https
+    * @param host
+    *   Registry hostname (required)
+    * @param port
+    *   Port number, None uses scheme default (443 for https, 80 for http)
+    * @param apiPath
+    *   API path, default: /apis/registry/v3
+    * @return
+    *   Assembled URL or None if host is not provided
+    */
+  def assembleRegistryUrl(
+    scheme: Option[String],
+    host: Option[String],
+    port: Option[Int],
+    apiPath: Option[String]
+  ): Option[String] =
+    host.map { h =>
+      val s    = scheme.getOrElse("https")
+      val p    = port match {
+        case Some(portNum) => s":$portNum"
+        case None          =>
+          // Use scheme default ports - omit from URL for cleanliness
+          ""
+      }
+      val path = apiPath.getOrElse("/apis/registry/v3")
+      s"$s://$h$p$path"
+    }
+
   /** Validate that required settings are configured
     */
   def validateSettings(
-    registryUrl: Option[String],
+    scheme: Option[String],
+    host: Option[String],
+    port: Option[Int],
+    apiPath: Option[String],
     keycloakConfig: Option[KeycloakConfig],
     groupId: Option[String],
     logger: Logger
@@ -116,20 +150,37 @@ object SchemaFileUtils {
         Right(())
     }
 
-    (registryUrl, groupId, keycloakValidation) match {
-      case (Some(url), Some(gid), Right(())) =>
-        if (url.trim.isEmpty) {
-          Left("apicurioRegistryUrl is empty")
-        } else if (gid.trim.isEmpty) {
+    // Validate scheme
+    val schemeValidation = scheme.getOrElse("https").toLowerCase match {
+      case "http" | "https" => Right(())
+      case invalid          => Left(s"Invalid scheme '$invalid' - must be 'http' or 'https'")
+    }
+
+    // Validate port if provided
+    val portValidation = port match {
+      case Some(p) if p <= 0 || p > 65535 => Left(s"Invalid port $p - must be between 1 and 65535")
+      case _                              => Right(())
+    }
+
+    // Assemble URL from components
+    val assembledUrl = assembleRegistryUrl(scheme, host, port, apiPath)
+
+    (assembledUrl, groupId, keycloakValidation, schemeValidation, portValidation) match {
+      case (Some(url), Some(gid), Right(()), Right(()), Right(())) =>
+        if (gid.trim.isEmpty) {
           Left("apicurioGroupId is empty")
         } else {
           Right((url, keycloakConfig, gid))
         }
-      case (None, _, _)                      =>
-        Left("apicurioRegistryUrl is not set")
-      case (_, None, _)                      =>
+      case (None, _, _, _, _)                                      =>
+        Left("apicurioRegistryHost is not set (required)")
+      case (_, None, _, _, _)                                      =>
         Left("apicurioGroupId is not set (this is required, no default is provided)")
-      case (_, _, Left(error))               =>
+      case (_, _, Left(error), _, _)                               =>
+        Left(error)
+      case (_, _, _, Left(error), _)                               =>
+        Left(error)
+      case (_, _, _, _, Left(error))                               =>
         Left(error)
     }
   }
