@@ -181,15 +181,32 @@ object SchemaReferenceUtils {
         List.empty
     }
 
-  /** Detect Protobuf import statements Looks for: import "path/to/schema.proto";
+  /** Standard protobuf import path prefixes that should not be resolved from Apicurio. These are well-known libraries
+    * bundled with protobuf/gRPC installations.
+    */
+  private val standardProtobufPrefixes: Set[String] = Set(
+    "google/protobuf/",   // Core types: timestamp, any, duration, empty, struct, wrappers
+    "google/api/",        // API annotations: annotations, http, field_behavior
+    "google/rpc/",        // gRPC types: status, code, error_details
+    "google/type/",       // Common types: date, money, color, latlng
+    "google/longrunning/" // Long-running operations
+  )
+
+  /** Check if a protobuf import path is a standard library import */
+  private def isStandardProtobufImport(importPath: String): Boolean =
+    standardProtobufPrefixes.exists(importPath.startsWith)
+
+  /** Detect Protobuf import statements. Looks for: import "path/to/schema.proto"; Filters out standard protobuf imports
+    * (google/protobuf, google/api, etc.)
     */
   private def detectProtobufReferences(content: String, logger: Logger): List[SchemaReference] = {
     val importPattern: Regex = """import\s+"([^"]+)";""".r
 
     importPattern
       .findAllMatchIn(content)
-      .map { m =>
-        val importPath = m.group(1)
+      .map(_.group(1))
+      .filterNot(isStandardProtobufImport)
+      .map { importPath =>
         val fileName   = importPath.split("/").last
         val artifactId = fileName.stripSuffix(".proto")
 
