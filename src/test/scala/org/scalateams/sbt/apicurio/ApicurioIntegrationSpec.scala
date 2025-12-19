@@ -767,6 +767,68 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
     schemaWithRefs.references shouldBe empty
   }
 
+  it should "filter standard protobuf imports when detecting references" in {
+    val protoWithStandardImports =
+      """syntax = "proto3";
+        |package com.example.test;
+        |
+        |import "google/protobuf/timestamp.proto";
+        |import "google/protobuf/any.proto";
+        |import "google/api/annotations.proto";
+        |import "google/rpc/status.proto";
+        |import "google/type/money.proto";
+        |import "google/longrunning/operations.proto";
+        |import "custom/my_schema.proto";
+        |
+        |message TestMessage {
+        |  string id = 1;
+        |}
+        |""".stripMargin
+
+    val schemaFile = ApicurioModels.SchemaFile(
+      file = new File("test.proto"),
+      content = protoWithStandardImports,
+      hash = "hash",
+      artifactType = ApicurioModels.ArtifactType.Protobuf,
+      fileExtension = "proto"
+    )
+
+    val result = SchemaReferenceUtils.detectReferences(schemaFile, "test", testLogger)
+
+    // Should only contain the custom import, not the google/* imports
+    result.references.size shouldBe 1
+    result.references.head.name shouldBe "custom/my_schema.proto"
+    result.references.head.artifactId shouldBe Some("my_schema")
+  }
+
+  it should "detect all protobuf imports when none are standard" in {
+    val protoWithCustomImports =
+      """syntax = "proto3";
+        |package com.example.test;
+        |
+        |import "company/schema_a.proto";
+        |import "company/schema_b.proto";
+        |
+        |message TestMessage {
+        |  string id = 1;
+        |}
+        |""".stripMargin
+
+    val schemaFile = ApicurioModels.SchemaFile(
+      file = new File("test.proto"),
+      content = protoWithCustomImports,
+      hash = "hash",
+      artifactType = ApicurioModels.ArtifactType.Protobuf,
+      fileExtension = "proto"
+    )
+
+    val result = SchemaReferenceUtils.detectReferences(schemaFile, "test", testLogger)
+
+    // Should contain both custom imports
+    result.references.size shouldBe 2
+    result.references.map(_.name) should contain allOf ("company/schema_a.proto", "company/schema_b.proto")
+  }
+
   it should "handle empty schema list in dependency ordering" in {
     val result = SchemaReferenceUtils.orderSchemasByDependencies(List.empty, testLogger)
 
