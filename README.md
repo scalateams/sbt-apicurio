@@ -68,7 +68,7 @@ This displays:
 - Common workflows
 - Your current configuration status
 
-See [HELP_FEATURE.md](HELP_FEATURE.md) for details.
+See [HELP_FEATURE.md](docs/HELP_FEATURE.md) for details.
 
 ### Configure required settings
 
@@ -432,7 +432,7 @@ Publishing in dependency order: Address → Customer → Order
 - **JSON Schema**: `$ref` with `apicurio://groupId/artifactId` URIs
 - **Protobuf**: `import "path/to/schema.proto"` statements
 
-See [SCHEMA_REFERENCES.md](SCHEMA_REFERENCES.md) for complete documentation.
+See [SCHEMA_REFERENCES.md](docs/SCHEMA_REFERENCES.md) for complete documentation.
 
 ## Complete Example
 
@@ -692,7 +692,7 @@ This project uses automated releases to Maven Central via [sbt-ci-release](https
 - **Snapshots** are published on every commit to `main`
 - Versions follow [Semantic Versioning](https://semver.org/)
 
-For maintainers, see [RELEASE.md](RELEASE.md) for detailed release instructions.
+For maintainers, see [RELEASE.md](docs/RELEASE.md) for detailed release instructions.
 
 ## License
 
