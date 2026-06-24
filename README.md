@@ -133,6 +133,7 @@ sbt apicurioPublish
 | `apicurioPullOutputDir` | `File` | `target/schemas` | Output directory for pulled schemas |
 | `apicurioPullDependencies` | `Seq[ApicurioDependency]` | `Seq.empty` | External schemas to pull |
 | `apicurioPullRecursive` | `Boolean` | `false` | Recursively pull transitive schema dependencies |
+| `apicurioPullWarnOnStaleVersions` | `Boolean` | `true` | Warn when a declared dependency is pinned to a version older than the registry's latest (one extra registry lookup per pinned dependency) |
 
 ### Compatibility Levels
 
@@ -347,6 +348,18 @@ apicurioPullRecursive := true
 With `apicurioPullRecursive := false` (default): Only `OrderPlaced` is pulled
 
 With `apicurioPullRecursive := true`: All three schemas (`OrderPlaced`, `Customer`, and `Address`) are pulled recursively
+
+#### Version Resolution and Stale-Pin Warnings
+
+`"latest"` is resolved to the highest version using **Semantic Versioning** precedence (e.g. `10.0.0` is newer than `9.0.0`, and `3.10.0` is newer than `3.2.0`), not a lexicographic string comparison.
+
+When a dependency is pinned to a concrete version older than the registry's latest, `apicurioPull` emits a warning so you can decide whether to update. The check runs one extra registry lookup per pinned dependency (dependencies on `"latest"` incur none); disable it with:
+
+```scala
+apicurioPullWarnOnStaleVersions := false
+```
+
+> **Note on non-semver version labels:** Version strings that are not valid semantic versions (e.g. `release-2`, custom tags) are ordered *below* every valid semantic version, so a registry mixing semver and non-semver labels for the same artifact will treat the highest semver version as latest. If your registry relies on non-semver labels, review your pinned versions after upgrading to this release.
 
 ### Custom Schema Locations
 

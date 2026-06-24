@@ -17,6 +17,12 @@ class SemanticVersionOrderingSpec extends AnyFlatSpec with Matchers {
     latest("3.0.0", "4.0.0", "10.0.0") shouldBe "10.0.0"
   }
 
+  it should "compare large numeric components numerically without Int overflow" in {
+    // A component above Int.MaxValue (2147483647) must stay a valid semver, not be demoted.
+    ordering.compare("2147483648", "2147483647") should be > 0
+    latest("1.0.0", "2147483648.0.0") shouldBe "2147483648.0.0"
+  }
+
   it should "treat a bare or partial core as zero-padded" in {
     ordering.compare("3", "3.0.0") shouldBe 0
     ordering.compare("3.0", "3.0.0") shouldBe 0

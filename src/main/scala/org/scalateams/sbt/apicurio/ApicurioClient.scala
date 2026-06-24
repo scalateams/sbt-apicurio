@@ -48,7 +48,7 @@ object ApicurioClient {
   */
 private[apicurio] object SemanticVersionOrdering extends Ordering[String] {
 
-  final private case class Parsed(core: List[Int], preRelease: List[String])
+  final private case class Parsed(core: List[Long], preRelease: List[String])
 
   def compare(a: String, b: String): Int =
     (parse(a), parse(b)) match {
@@ -64,25 +64,26 @@ private[apicurio] object SemanticVersionOrdering extends Ordering[String] {
       case -1  => (withoutBuild, "")
       case idx => (withoutBuild.substring(0, idx), withoutBuild.substring(idx + 1))
     }
-    val coreInts          = coreStr.split('.').toList.map(parseNonNegativeInt)
-    if (coreStr.isEmpty || coreInts.exists(_.isEmpty)) None
-    else Some(Parsed(coreInts.flatten, if (preStr.isEmpty) Nil else preStr.split('.').toList))
+    val core              = coreStr.split('.').toList.map(parseNonNegativeLong)
+    if (coreStr.isEmpty || core.exists(_.isEmpty)) None
+    else Some(Parsed(core.flatten, if (preStr.isEmpty) Nil else preStr.split('.').toList))
   }
 
-  private def parseNonNegativeInt(s: String): Option[Int] =
-    if (s.nonEmpty && s.forall(_.isDigit)) Try(s.toInt).toOption else None
+  // Long (not Int) so that large all-digit components do not overflow and get demoted to non-semver.
+  private def parseNonNegativeLong(s: String): Option[Long] =
+    if (s.nonEmpty && s.forall(_.isDigit)) Try(s.toLong).toOption else None
 
   private def compareParsed(x: Parsed, y: Parsed): Int = {
     val coreComparison = compareCore(x.core, y.core)
     if (coreComparison != 0) coreComparison else comparePreRelease(x.preRelease, y.preRelease)
   }
 
-  private def compareCore(x: List[Int], y: List[Int]): Int = {
+  private def compareCore(x: List[Long], y: List[Long]): Int = {
     val length = math.max(x.length, y.length)
-    x.padTo(length, 0)
-      .zip(y.padTo(length, 0))
+    x.padTo(length, 0L)
+      .zip(y.padTo(length, 0L))
+      .find { case (l, r) => l != r }
       .map { case (l, r) => l.compare(r) }
-      .find(_ != 0)
       .getOrElse(0)
   }
 
@@ -99,7 +100,7 @@ private[apicurio] object SemanticVersionOrdering extends Ordering[String] {
     }
 
   private def comparePreReleaseId(l: String, r: String): Int =
-    (parseNonNegativeInt(l), parseNonNegativeInt(r)) match {
+    (parseNonNegativeLong(l), parseNonNegativeLong(r)) match {
       case (Some(a), Some(b)) => a.compare(b)   // numeric identifiers compared numerically
       case (Some(_), None)    => -1             // numeric identifiers have lower precedence (§11)
       case (None, Some(_))    => 1

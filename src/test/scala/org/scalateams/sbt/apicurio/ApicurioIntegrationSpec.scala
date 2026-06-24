@@ -13,11 +13,11 @@ object IntegrationTest extends Tag("org.scalateams.sbt.apicurio.IntegrationTest"
 /** Integration tests for Apicurio plugin.
   *
   * These tests require a running Apicurio Registry instance. Set environment variables to run:
-  * - APICURIO_TEST_URL: Registry URL (default: http://localhost:8080/apis/registry/v3)
-  * - KEYCLOAK_URL: Keycloak server URL (for authenticated testing)
-  * - KEYCLOAK_REALM: Keycloak realm name
-  * - KEYCLOAK_CLIENT_ID: Service account client ID
-  * - KEYCLOAK_CLIENT_SECRET: Service account client secret
+  *   - APICURIO_TEST_URL: Registry URL (default: http://localhost:8080/apis/registry/v3)
+  *   - KEYCLOAK_URL: Keycloak server URL (for authenticated testing)
+  *   - KEYCLOAK_REALM: Keycloak realm name
+  *   - KEYCLOAK_CLIENT_ID: Service account client ID
+  *   - KEYCLOAK_CLIENT_SECRET: Service account client secret
   *
   * To run: sbt "testOnly *IntegrationSpec" To skip: sbt "testOnly * -- -l org.scalateams.sbt.apicurio.IntegrationTest"
   */
@@ -179,10 +179,10 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
 
   it should "use defaults when scheme and apiPath are None" in {
     val result = SchemaFileUtils.assembleRegistryUrl(
-      None,  // defaults to https
+      None, // defaults to https
       Some("registry.example.com"),
       None,
-      None   // defaults to /apis/registry/v3
+      None  // defaults to /apis/registry/v3
     )
     result shouldBe Some("https://registry.example.com/apis/registry/v3")
   }
@@ -191,7 +191,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
 
   it should "validate invalid scheme" in {
     val result = SchemaFileUtils.validateSettings(
-      Some("ftp"),  // invalid scheme
+      Some("ftp"), // invalid scheme
       Some("registry.example.com"),
       None,
       Some("/apis/registry/v3"),
@@ -207,7 +207,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
     val result = SchemaFileUtils.validateSettings(
       Some("https"),
       Some("registry.example.com"),
-      Some(0),  // invalid port
+      Some(0), // invalid port
       Some("/apis/registry/v3"),
       None,
       Some("com.example.test"),
@@ -221,7 +221,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
     val result = SchemaFileUtils.validateSettings(
       Some("https"),
       Some("registry.example.com"),
-      Some(65536),  // invalid port
+      Some(65536), // invalid port
       Some("/apis/registry/v3"),
       None,
       Some("com.example.test"),
@@ -247,7 +247,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
   it should "fail when host is not provided" in {
     val result = SchemaFileUtils.validateSettings(
       Some("https"),
-      None,  // missing host
+      None, // missing host
       None,
       Some("/apis/registry/v3"),
       None,
@@ -265,7 +265,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
       None,
       Some("/apis/registry/v3"),
       None,
-      None,  // missing groupId
+      None, // missing groupId
       testLogger
     )
     result shouldBe a[Left[_, _]]
@@ -273,7 +273,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
   }
 
   it should "accept valid configuration" in {
-    val result = SchemaFileUtils.validateSettings(
+    val result            = SchemaFileUtils.validateSettings(
       Some("https"),
       Some("registry.example.com"),
       None,

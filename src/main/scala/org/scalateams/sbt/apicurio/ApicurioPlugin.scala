@@ -15,21 +15,25 @@ object ApicurioPlugin extends AutoPlugin {
     val apicurioRegistryScheme = settingKey[String]("Registry URL scheme: http or https (default: https)")
     val apicurioRegistryHost   = settingKey[String]("Registry hostname (e.g., registry.example.com)")
     val apicurioRegistryPort = settingKey[Option[Int]]("Registry port (default: None, uses 443 for https, 80 for http)")
-    val apicurioRegistryApiPath    = settingKey[String]("Registry API path (default: /apis/registry/v3)")
-    val apicurioKeycloakConfig     = settingKey[Option[KeycloakConfig]](
+    val apicurioRegistryApiPath         = settingKey[String]("Registry API path (default: /apis/registry/v3)")
+    val apicurioKeycloakConfig          = settingKey[Option[KeycloakConfig]](
       "Optional Keycloak OAuth2 configuration for authentication (replaces apicurioApiKey)"
     )
-    val apicurioGroupId            = settingKey[String]("Group ID for artifacts (e.g., com.example.yourservice)")
-    val apicurioCompatibilityLevel =
+    val apicurioGroupId                 = settingKey[String]("Group ID for artifacts (e.g., com.example.yourservice)")
+    val apicurioCompatibilityLevel      =
       settingKey[CompatibilityLevel]("Schema compatibility level: Backward, Forward, Full, or None (default: Backward)")
-    val apicurioSchemaPaths        =
+    val apicurioSchemaPaths             =
       settingKey[Seq[File]]("Paths to directories containing schema files (default: src/main/schemas)")
-    val apicurioPullOutputDir      = settingKey[File]("Directory to save pulled schemas (default: target/schemas)")
-    val apicurioPullDependencies   = settingKey[Seq[ApicurioDependency]](
+    val apicurioPullOutputDir           = settingKey[File]("Directory to save pulled schemas (default: target/schemas)")
+    val apicurioPullDependencies        = settingKey[Seq[ApicurioDependency]](
       "List of schema dependencies to pull using schema(groupId, artifactId, version)"
     )
-    val apicurioPullRecursive      = settingKey[Boolean](
+    val apicurioPullRecursive           = settingKey[Boolean](
       "Whether to recursively pull transitive schema dependencies (default: false)"
+    )
+    val apicurioPullWarnOnStaleVersions = settingKey[Boolean](
+      "Whether apicurioPull warns about declared dependencies pinned to a version older than the registry's latest. " +
+        "Each pinned dependency costs one extra registry lookup; set to false to skip the check (default: true)"
     )
 
     // Tasks
@@ -109,15 +113,16 @@ object ApicurioPlugin extends AutoPlugin {
 
   override lazy val projectSettings: Seq[Setting[_]] = Seq(
     // Default settings
-    apicurioRegistryScheme     := "https",
-    apicurioRegistryPort       := None,
-    apicurioRegistryApiPath    := "/apis/registry/v3",
-    apicurioKeycloakConfig     := None,
-    apicurioCompatibilityLevel := CompatibilityLevel.Backward,
-    apicurioSchemaPaths        := Seq(sourceDirectory.value / "main" / "schemas"),
-    apicurioPullOutputDir      := target.value / "schemas",
-    apicurioPullDependencies   := Seq.empty,
-    apicurioPullRecursive      := false,
+    apicurioRegistryScheme          := "https",
+    apicurioRegistryPort            := None,
+    apicurioRegistryApiPath         := "/apis/registry/v3",
+    apicurioKeycloakConfig          := None,
+    apicurioCompatibilityLevel      := CompatibilityLevel.Backward,
+    apicurioSchemaPaths             := Seq(sourceDirectory.value / "main" / "schemas"),
+    apicurioPullOutputDir           := target.value / "schemas",
+    apicurioPullDependencies        := Seq.empty,
+    apicurioPullRecursive           := false,
+    apicurioPullWarnOnStaleVersions := true,
 
     // Help task
     apicurioHelp := {
@@ -150,6 +155,7 @@ object ApicurioPlugin extends AutoPlugin {
       log.info("  apicurioPullOutputDir      - Output directory for pulled schemas (default: target/schemas)")
       log.info("  apicurioPullDependencies   - Schema dependencies to pull")
       log.info("  apicurioPullRecursive      - Recursively pull transitive dependencies (default: false)")
+      log.info("  apicurioPullWarnOnStaleVersions - Warn on pins older than the registry's latest (default: true)")
       log.info("")
       log.info("SUPPORTED SCHEMA TYPES:")
       log.info("  • Avro         (.avsc, .avro)")
@@ -334,6 +340,7 @@ object ApicurioPlugin extends AutoPlugin {
       val outputDir      = apicurioPullOutputDir.value
       val dependencies   = apicurioPullDependencies.value
       val recursive      = apicurioPullRecursive.value
+      val warnOnStale    = apicurioPullWarnOnStaleVersions.value
 
       if (dependencies.isEmpty) {
         log.debug("No schema dependencies configured")
@@ -349,16 +356,25 @@ object ApicurioPlugin extends AutoPlugin {
               // latest. A pin equal to latest is fine (no drift) and stays silent; only a stale
               // pin can miss compatible updates. Versions are compared by semantic-version
               // precedence, so "3" and "3.0.0" are equal. Transitive dependencies are not checked
-              // here — they inherit their parent's version.
-              val stalePins = dependencies.flatMap { dep =>
-                if (dep.version.equalsIgnoreCase("latest")) None
+              // here — they inherit their parent's version. Each pinned dependency costs one extra
+              // registry lookup, so the whole check is skipped when warnOnStale is disabled.
+              val stalePins =
+                if (!warnOnStale) Seq.empty
                 else
-                  client.getLatestVersion(dep.groupId, dep.artifactId) match {
-                    case Right(latest) if SemanticVersionOrdering.compare(dep.version, latest.version) < 0 =>
-                      Some((dep, latest.version))
-                    case _                                                                                 => None
+                  dependencies.flatMap { dep =>
+                    if (dep.version.equalsIgnoreCase("latest")) None
+                    else
+                      client.getLatestVersion(dep.groupId, dep.artifactId) match {
+                        case Right(latest) if SemanticVersionOrdering.compare(dep.version, latest.version) < 0 =>
+                          Some((dep, latest.version))
+                        case Right(_)                                                                          => None
+                        case Left(err)                                                                         =>
+                          log.debug(
+                            s"Could not check latest version for ${dep.groupId}:${dep.artifactId}: ${err.message}"
+                          )
+                          None
+                      }
                   }
-              }
               if (stalePins.nonEmpty) {
                 log.warn(
                   s"""${stalePins.size} schema dependency(ies) pinned to a version older than the registry's "latest":"""
