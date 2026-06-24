@@ -348,7 +348,7 @@ object ApicurioPlugin extends AutoPlugin {
         val pinnedDependencies = dependencies.filterNot(_.version.equalsIgnoreCase("latest"))
         if (pinnedDependencies.nonEmpty) {
           log.warn(
-            s"${pinnedDependencies.size} schema dependency(ies) pinned to a specific version rather than \"latest\":"
+            s"""${pinnedDependencies.size} schema dependency(ies) pinned to a specific version rather than "latest":"""
           )
           pinnedDependencies.foreach(dep => log.warn(s"  • ${dep.groupId}:${dep.artifactId}:${dep.version}"))
           log.warn(
