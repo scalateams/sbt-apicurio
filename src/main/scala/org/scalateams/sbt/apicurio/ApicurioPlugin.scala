@@ -342,6 +342,21 @@ object ApicurioPlugin extends AutoPlugin {
         )
         Seq.empty
       } else {
+        // Warn about dependencies pinned to a specific version rather than "latest".
+        // Only the declared dependencies are checked here; transitive dependencies
+        // inherit their parent's version and are expanded later.
+        val pinnedDependencies = dependencies.filterNot(_.version.equalsIgnoreCase("latest"))
+        if (pinnedDependencies.nonEmpty) {
+          log.warn(
+            s"${pinnedDependencies.size} schema dependency(ies) pinned to a specific version rather than \"latest\":"
+          )
+          pinnedDependencies.foreach(dep => log.warn(s"  • ${dep.groupId}:${dep.artifactId}:${dep.version}"))
+          log.warn(
+            "Pinned versions can drift from the registry's latest schema and miss compatible updates. " +
+              "Use \"latest\" unless a specific version is required."
+          )
+        }
+
         SchemaFileUtils.validateSettings(scheme, host, port, apiPath, keycloakConfig, groupId, log) match {
           case Right((validUrl, validKeycloakConfig, _)) =>
             ApicurioClient.withClient(validUrl, validKeycloakConfig, log) { client =>
