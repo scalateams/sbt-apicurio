@@ -38,6 +38,75 @@ object ApicurioClient {
   }
 }
 
+/** Orders version identifiers by Semantic Versioning 2.0.0 precedence.
+  *
+  * Apicurio version strings are typically semantic versions ("3.0.0", "4.5.1"). A bare or partial core such as "3" or
+  * "3.0" is zero-padded so "3" == "3.0.0"; build metadata (after '+') is ignored for precedence (§10); and a normal
+  * release outranks any pre-release of the same core (§11). Any string that is not valid semver is ordered below every
+  * semantic version (and lexicographically among other non-semver strings) so a custom label never masquerades as the
+  * latest version.
+  */
+private[apicurio] object SemanticVersionOrdering extends Ordering[String] {
+
+  final private case class Parsed(core: List[Int], preRelease: List[String])
+
+  def compare(a: String, b: String): Int =
+    (parse(a), parse(b)) match {
+      case (Some(x), Some(y)) => compareParsed(x, y)
+      case (Some(_), None)    => 1
+      case (None, Some(_))    => -1
+      case (None, None)       => a.compareTo(b)
+    }
+
+  private def parse(version: String): Option[Parsed] = {
+    val withoutBuild      = version.takeWhile(_ != '+')
+    val (coreStr, preStr) = withoutBuild.indexOf('-') match {
+      case -1  => (withoutBuild, "")
+      case idx => (withoutBuild.substring(0, idx), withoutBuild.substring(idx + 1))
+    }
+    val coreInts          = coreStr.split('.').toList.map(parseNonNegativeInt)
+    if (coreStr.isEmpty || coreInts.exists(_.isEmpty)) None
+    else Some(Parsed(coreInts.flatten, if (preStr.isEmpty) Nil else preStr.split('.').toList))
+  }
+
+  private def parseNonNegativeInt(s: String): Option[Int] =
+    if (s.nonEmpty && s.forall(_.isDigit)) Try(s.toInt).toOption else None
+
+  private def compareParsed(x: Parsed, y: Parsed): Int = {
+    val coreComparison = compareCore(x.core, y.core)
+    if (coreComparison != 0) coreComparison else comparePreRelease(x.preRelease, y.preRelease)
+  }
+
+  private def compareCore(x: List[Int], y: List[Int]): Int = {
+    val length = math.max(x.length, y.length)
+    x.padTo(length, 0)
+      .zip(y.padTo(length, 0))
+      .map { case (l, r) => l.compare(r) }
+      .find(_ != 0)
+      .getOrElse(0)
+  }
+
+  private def comparePreRelease(x: List[String], y: List[String]): Int =
+    (x, y) match {
+      case (Nil, Nil) => 0
+      case (Nil, _)   => 1 // a release outranks a pre-release of the same core (§11)
+      case (_, Nil)   => -1
+      case _          =>
+        x.zip(y)
+          .map { case (l, r) => comparePreReleaseId(l, r) }
+          .find(_ != 0)
+          .getOrElse(x.length.compare(y.length)) // more identifiers wins when all preceding are equal
+    }
+
+  private def comparePreReleaseId(l: String, r: String): Int =
+    (parseNonNegativeInt(l), parseNonNegativeInt(r)) match {
+      case (Some(a), Some(b)) => a.compare(b)   // numeric identifiers compared numerically
+      case (Some(_), None)    => -1             // numeric identifiers have lower precedence (§11)
+      case (None, Some(_))    => 1
+      case (None, None)       => l.compareTo(r) // alphanumeric identifiers compared lexically
+    }
+}
+
 class ApicurioClient(
   registryUrl: String,
   keycloakConfig: Option[KeycloakConfig],
@@ -125,7 +194,7 @@ class ApicurioClient(
           case Right(body)                              =>
             parse(body).flatMap(_.hcursor.downField("versions").as[List[VersionMetadata]]) match {
               case Right(versions) if versions.nonEmpty =>
-                Right(versions.maxBy(_.version))
+                Right(versions.maxBy(_.version)(SemanticVersionOrdering))
               case Right(_)                             =>
                 Left(ApicurioError.ArtifactNotFound(groupId, artifactId))
               case Left(error)                          =>

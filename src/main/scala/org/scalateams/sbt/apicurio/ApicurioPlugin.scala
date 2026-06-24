@@ -345,21 +345,23 @@ object ApicurioPlugin extends AutoPlugin {
         SchemaFileUtils.validateSettings(scheme, host, port, apiPath, keycloakConfig, groupId, log) match {
           case Right((validUrl, validKeycloakConfig, _)) =>
             ApicurioClient.withClient(validUrl, validKeycloakConfig, log) { client =>
-              // Warn about declared dependencies pinned to a version that is no longer the
-              // registry's latest. A pin that still matches latest is fine (no drift) and is
-              // left silent; only a stale pin can miss compatible updates. Transitive
-              // dependencies are not checked here — they inherit their parent's version.
+              // Warn about declared dependencies pinned to a version older than the registry's
+              // latest. A pin equal to latest is fine (no drift) and stays silent; only a stale
+              // pin can miss compatible updates. Versions are compared by semantic-version
+              // precedence, so "3" and "3.0.0" are equal. Transitive dependencies are not checked
+              // here — they inherit their parent's version.
               val stalePins = dependencies.flatMap { dep =>
                 if (dep.version.equalsIgnoreCase("latest")) None
                 else
                   client.getLatestVersion(dep.groupId, dep.artifactId) match {
-                    case Right(latest) if latest.version != dep.version => Some((dep, latest.version))
-                    case _                                              => None
+                    case Right(latest) if SemanticVersionOrdering.compare(dep.version, latest.version) < 0 =>
+                      Some((dep, latest.version))
+                    case _                                                                                 => None
                   }
               }
               if (stalePins.nonEmpty) {
                 log.warn(
-                  s"""${stalePins.size} schema dependency(ies) pinned to a version that is not the registry's "latest":"""
+                  s"""${stalePins.size} schema dependency(ies) pinned to a version older than the registry's "latest":"""
                 )
                 stalePins.foreach {
                   case (dep, latestVersion) =>
