@@ -342,24 +342,35 @@ object ApicurioPlugin extends AutoPlugin {
         )
         Seq.empty
       } else {
-        // Warn about dependencies pinned to a specific version rather than "latest".
-        // Only the declared dependencies are checked here; transitive dependencies
-        // inherit their parent's version and are expanded later.
-        val pinnedDependencies = dependencies.filterNot(_.version.equalsIgnoreCase("latest"))
-        if (pinnedDependencies.nonEmpty) {
-          log.warn(
-            s"""${pinnedDependencies.size} schema dependency(ies) pinned to a specific version rather than "latest":"""
-          )
-          pinnedDependencies.foreach(dep => log.warn(s"  • ${dep.groupId}:${dep.artifactId}:${dep.version}"))
-          log.warn(
-            "Pinned versions can drift from the registry's latest schema and miss compatible updates. " +
-              "Use \"latest\" unless a specific version is required."
-          )
-        }
-
         SchemaFileUtils.validateSettings(scheme, host, port, apiPath, keycloakConfig, groupId, log) match {
           case Right((validUrl, validKeycloakConfig, _)) =>
             ApicurioClient.withClient(validUrl, validKeycloakConfig, log) { client =>
+              // Warn about declared dependencies pinned to a version that is no longer the
+              // registry's latest. A pin that still matches latest is fine (no drift) and is
+              // left silent; only a stale pin can miss compatible updates. Transitive
+              // dependencies are not checked here — they inherit their parent's version.
+              val stalePins = dependencies.flatMap { dep =>
+                if (dep.version.equalsIgnoreCase("latest")) None
+                else
+                  client.getLatestVersion(dep.groupId, dep.artifactId) match {
+                    case Right(latest) if latest.version != dep.version => Some((dep, latest.version))
+                    case _                                              => None
+                  }
+              }
+              if (stalePins.nonEmpty) {
+                log.warn(
+                  s"""${stalePins.size} schema dependency(ies) pinned to a version that is not the registry's "latest":"""
+                )
+                stalePins.foreach {
+                  case (dep, latestVersion) =>
+                    log.warn(s"  • ${dep.groupId}:${dep.artifactId}: pinned ${dep.version}, latest is $latestVersion")
+                }
+                log.warn(
+                  "Pinned versions can drift from the registry's latest schema and miss compatible updates. " +
+                    "Use \"latest\" unless a specific version is required."
+                )
+              }
+
               // Expand dependencies recursively if requested
               val allDependencies = if (recursive) {
                 log.info(s"Resolving transitive dependencies for ${dependencies.size} schema(s)...")
