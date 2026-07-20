@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2026-07-20
+
+### Changed
+- **Migrated to sbt 2.x (sbt 2.0.3) and Scala 3 (3.8.4).** The plugin now
+  publishes for sbt 2.x only; sbt 1.x is no longer supported (use the 0.3.x
+  line for sbt 1.x). Minimum JDK is now 17.
+- Source rewritten in idiomatic Scala 3: ADTs are `enum`s, circe codecs are
+  `given`s, model re-exports use `export`.
+- Effectful tasks are opted out of sbt 2's default task caching via
+  `Def.uncached`.
+- Behavior is otherwise unchanged (Apicurio 3.x REST integration, semantic
+  version ordering, schema reference detection and ordering, Keycloak OAuth2,
+  stale-pin warning).
+- Dropped the `sbt-scalafmt` plugin (it has no sbt-2 artifact) in favor of
+  the standalone `scalafmt` CLI via Coursier (`cs launch scalafmt`), invoked
+  directly in CI and for local formatting.
+
+---
+
 ## [0.2.0] - 2025-11-17
 
 ### Added
@@ -142,6 +161,7 @@ apicurioKeycloakConfig := {
 
 ---
 
+[1.0.0]: https://github.com/scalateams/sbt-apicurio/compare/v0.3.1...v1.0.0
 [0.2.0]: https://github.com/scalateams/sbt-apicurio/compare/v0.1.5...v0.2.0
 [0.1.5]: https://github.com/scalateams/sbt-apicurio/compare/0.1.4...v0.1.5
 [0.1.4]: https://github.com/scalateams/sbt-apicurio/compare/v0.1.3...0.1.4

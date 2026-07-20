@@ -26,6 +26,8 @@ This plugin was developed as an experiment to evaluate how effectively an LLM ca
 
 This plugin is published to Maven Central. Add it to your `project/plugins.sbt`:
 
+> Requires **sbt 2.x** and **JDK 17+**. (sbt 1.x users: use the 0.3.x line, the final sbt 1.x release.)
+
 ```scala
 addSbtPlugin("org.scalateams" % "sbt-apicurio" % "<version>")
 ```
@@ -40,7 +42,7 @@ Snapshot versions are published on every commit to `main` branch:
 
 ```scala
 resolvers += Resolver.sonatypeRepo("snapshots")
-addSbtPlugin("org.scalateams" % "sbt-apicurio" % "0.1.0+<commits>-<hash>-SNAPSHOT")
+addSbtPlugin("org.scalateams" % "sbt-apicurio" % "1.0.0+<commits>-<hash>-SNAPSHOT")
 ```
 
 ## Quick Start
@@ -630,15 +632,18 @@ addSbtPlugin("org.scalateams" % "sbt-apicurio" % "<version>")
 
 ## Requirements
 
-- SBT 1.x
+- sbt 2.x (built/tested against 2.0.3)
+- JDK 17+
 - Apicurio Registry 3.x
-- Scala 2.12 (for SBT plugin compatibility)
+- Scala 3.8.4 (the plugin's own build; sbt plugins compile against sbt's own Scala version, so this does not constrain the Scala version of consuming projects)
+
+> sbt 1.x users: use the 0.3.x release line (the final sbt 1.x-compatible line); it will not receive new features.
 
 ## CI/CD
 
 This project uses modern CI/CD automation:
 
-- **GitHub Actions**: Runs tests on multiple Java versions (11, 17) and handles automated releases
+- **GitHub Actions**: Runs tests on JDK 17 and handles automated releases
 - **Scala Steward**: Automated dependency updates via [@scala-steward](https://github.com/scala-steward-org/scala-steward)
 - **Mergify**: Auto-merges dependency updates that pass CI
 - **sbt-ci-release**: Automated publishing to Maven Central on git tag push
