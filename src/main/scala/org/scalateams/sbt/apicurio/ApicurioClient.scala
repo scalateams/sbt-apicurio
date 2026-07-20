@@ -195,7 +195,7 @@ class ApicurioClient(
           case Right(body)                              =>
             parse(body).flatMap(_.hcursor.downField("versions").as[List[VersionMetadata]]) match {
               case Right(versions) if versions.nonEmpty =>
-                Right(versions.maxBy(_.version)(SemanticVersionOrdering))
+                Right(versions.maxBy(_.version)(using SemanticVersionOrdering))
               case Right(_)                             =>
                 Left(ApicurioError.ArtifactNotFound(groupId, artifactId))
               case Left(error)                          =>

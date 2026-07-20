@@ -43,7 +43,7 @@ object SchemaFileUtils {
 
     val subDirSchemas = dirs.flatMap(discoverSchemasRecursive(_, logger))
 
-    schemaFiles ++ subDirSchemas
+    (schemaFiles ++ subDirSchemas).toIndexedSeq
   }
 
   /** Check if a file is a schema file based on extension
