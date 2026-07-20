@@ -842,6 +842,20 @@ git commit -m "docs: document sbt 2.x / 1.0.0 release"
 
 ---
 
+## Task 9: Clear Scala 3 deprecation warnings in test sources (added during execution)
+
+> Added during execution: a clean rebuild surfaced ~71 Scala 3 deprecation warnings in `ApicurioIntegrationSpec.scala`, all from `_` existential type wildcards in ScalaTest matchers (`a[Left[_, _]]` / `a[Right[_, _]]`, 35 occurrences). Scala 3 deprecates `_` for type wildcards in favor of `?`. This clears them so `sbt test` / CI output is pristine. Behavior-preserving.
+
+**Files:**
+- Modify: `src/test/scala/org/scalateams/sbt/apicurio/ApicurioIntegrationSpec.scala`
+
+- [ ] **Step 1:** Replace every `Left[_, _]` with `Left[?, ?]` and every `Right[_, _]` with `Right[?, ?]` in the file (all 35 are inside `shouldBe a[...]` matchers). Change nothing else — no assertion, matcher kind, or test data.
+- [ ] **Step 2:** `sbt Test/compile` — confirm the deprecation warnings from those sites are gone and no new warnings appear.
+- [ ] **Step 3:** Run the unit tests: `sbt "testOnly * -- -l org.scalateams.sbt.apicurio.IntegrationTest"` — same pass/skip result as before.
+- [ ] **Step 4:** Format via CLI: `cs launch scalafmt:3.7.17 -- --config .scalafmt.conf src/test/scala/org/scalateams/sbt/apicurio/ApicurioIntegrationSpec.scala`, then commit: `style: use Scala 3 ? wildcards in test matchers (clear deprecation warnings)`.
+
+---
+
 ## Post-plan (requires explicit user approval — not part of task execution)
 
 Tagging `v1.0.0` and pushing triggers `release.yml` → Maven Central. Per the repo branch-safety rule, do **not** tag or push without the user explicitly saying so.
