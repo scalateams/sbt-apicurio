@@ -1,31 +1,39 @@
-name := "sbt-apicurio-example"
+name         := "sbt-apicurio-example"
 organization := "org.scalateams.example"
-version := "0.1.0-SNAPSHOT"
+version      := "0.1.0-SNAPSHOT"
 
-scalaVersion := "2.13.12"
+scalaVersion := "3.8.4"
 
 // Enable the Apicurio plugin
 enablePlugins(ApicurioPlugin)
 
-// Required settings
-apicurioRegistryUrl := sys.env.getOrElse("APICURIO_URL", "http://localhost:8080")
-apicurioGroupId := "com.example.myservice"
+// Required settings (component-based URL)
+apicurioRegistryHost   := sys.env.getOrElse("APICURIO_HOST", "localhost")
+apicurioRegistryScheme := "http"
+apicurioRegistryPort   := Some(8080)
+apicurioGroupId        := "com.example.myservice"
 
-// Optional settings
-apicurioApiKey := sys.env.get("APICURIO_API_KEY")
+// Optional Keycloak OAuth2 authentication (unauthenticated by default)
+apicurioKeycloakConfig := None
+// apicurioKeycloakConfig := Some(keycloak(
+//   url = sys.env.getOrElse("KEYCLOAK_URL", ""),
+//   realm = sys.env.getOrElse("KEYCLOAK_REALM", ""),
+//   clientId = sys.env.getOrElse("KEYCLOAK_CLIENT_ID", ""),
+//   clientSecret = sys.env.getOrElse("KEYCLOAK_CLIENT_SECRET", "")
+// ))
+
 apicurioCompatibilityLevel := CompatibilityLevel.Backward
 
-// Schema paths (default is fine, but showing how to configure)
+// Schema paths (default is fine; shown for illustration)
 apicurioSchemaPaths := Seq(
   sourceDirectory.value / "main" / "schemas"
 )
 
 // Pull dependencies from other services
 apicurioPullDependencies := Seq(
-  // Example dependencies - uncomment when registry has these artifacts
   // schema("com.example.catalog", "CatalogItemCreated", "latest"),
   // schema("com.example.order", "OrderPlaced", "latest")
 )
 
-// Optional: Recursively pull transitive dependencies
+// Optional: recursively pull transitive dependencies
 // apicurioPullRecursive := true
