@@ -199,7 +199,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
       Some("com.example.test"),
       testLogger
     )
-    result shouldBe a[Left[_, _]]
+    result shouldBe a[Left[?, ?]]
     result.left.getOrElse("") should include("Invalid scheme 'ftp'")
   }
 
@@ -213,7 +213,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
       Some("com.example.test"),
       testLogger
     )
-    result shouldBe a[Left[_, _]]
+    result shouldBe a[Left[?, ?]]
     result.left.getOrElse("") should include("Invalid port 0")
   }
 
@@ -227,7 +227,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
       Some("com.example.test"),
       testLogger
     )
-    result shouldBe a[Left[_, _]]
+    result shouldBe a[Left[?, ?]]
     result.left.getOrElse("") should include("Invalid port 65536")
   }
 
@@ -241,7 +241,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
       Some("com.example.test"),
       testLogger
     )
-    result shouldBe a[Right[_, _]]
+    result shouldBe a[Right[?, ?]]
   }
 
   it should "fail when host is not provided" in {
@@ -254,7 +254,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
       Some("com.example.test"),
       testLogger
     )
-    result shouldBe a[Left[_, _]]
+    result shouldBe a[Left[?, ?]]
     result.left.getOrElse("") should include("apicurioRegistryHost is not set")
   }
 
@@ -268,7 +268,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
       None, // missing groupId
       testLogger
     )
-    result shouldBe a[Left[_, _]]
+    result shouldBe a[Left[?, ?]]
     result.left.getOrElse("") should include("apicurioGroupId is not set")
   }
 
@@ -282,7 +282,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
       Some("com.example.test"),
       testLogger
     )
-    result shouldBe a[Right[_, _]]
+    result shouldBe a[Right[?, ?]]
     val (url, _, groupId) = result.getOrElse(fail("Expected Right but got Left"))
     url shouldBe "https://registry.example.com/apis/registry/v3"
     groupId shouldBe "com.example.test"
@@ -311,7 +311,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
         ApicurioModels.CompatibilityLevel.Backward
       )
 
-      result shouldBe a[Right[_, _]]
+      result shouldBe a[Right[?, ?]]
       val response = result.getOrElse(fail("Expected Right but got Left"))
 
       // publishSchema returns Either[CreateArtifactResponse, VersionMetadata]
@@ -350,7 +350,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
         ApicurioModels.CompatibilityLevel.Backward
       )
 
-      result shouldBe a[Right[_, _]]
+      result shouldBe a[Right[?, ?]]
       val response = result.getOrElse(fail("Expected Right but got Left"))
       response match {
         case Left(createResponse) =>
@@ -385,7 +385,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
         ApicurioModels.CompatibilityLevel.Backward
       )
 
-      result shouldBe a[Right[_, _]]
+      result shouldBe a[Right[?, ?]]
       val response = result.getOrElse(fail("Expected Right but got Left"))
       response match {
         case Left(createResponse) =>
@@ -418,7 +418,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
         ApicurioModels.CompatibilityLevel.Backward
       )
 
-      result shouldBe a[Right[_, _]]
+      result shouldBe a[Right[?, ?]]
       val response = result.getOrElse(fail("Expected Right but got Left"))
       response match {
         case Left(createResponse) =>
@@ -464,7 +464,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
         ApicurioModels.CompatibilityLevel.Backward
       )
 
-      result shouldBe a[Right[_, _]]
+      result shouldBe a[Right[?, ?]]
       val response = result.getOrElse(fail("Expected Right but got Left"))
       response match {
         case Left(createResponse) =>
@@ -477,7 +477,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
 
       // Verify we can retrieve the content back (using latest since version may vary)
       val retrievedContent = client.getVersionContent(testGroupId, artifactId, "latest")
-      retrievedContent shouldBe a[Right[_, _]]
+      retrievedContent shouldBe a[Right[?, ?]]
       val content          = retrievedContent.getOrElse(fail("Expected Right but got Left"))
       content should include("Test YAML API")
     } finally client.close()
@@ -493,7 +493,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
     try {
       val result = client.getArtifactMetadata(testGroupId, "TestUser")
 
-      result shouldBe a[Right[_, _]]
+      result shouldBe a[Right[?, ?]]
       val metadata = result.getOrElse(fail("Expected Right but got Left"))
       metadata.artifactId shouldBe "TestUser"
       metadata.groupId shouldBe testGroupId
@@ -509,7 +509,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
     try {
       val result = client.getVersionContent(testGroupId, "TestUser", "1")
 
-      result shouldBe a[Right[_, _]]
+      result shouldBe a[Right[?, ?]]
       val content = result.getOrElse(fail("Expected Right but got Left"))
       content should include("TestUser")
       content should include("com.example.test")
@@ -524,7 +524,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
     try {
       val result = client.getLatestVersion(testGroupId, "TestUser")
 
-      result shouldBe a[Right[_, _]]
+      result shouldBe a[Right[?, ?]]
       val version = result.getOrElse(fail("Expected Right but got Left"))
       version.version should not be empty
       version.artifactId shouldBe "TestUser"
@@ -542,7 +542,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
       val dependency = ApicurioModels.ApicurioDependency(testGroupId, "TestUser", "1")
 
       val contentResult = client.getVersionContent(testGroupId, "TestUser", "1")
-      contentResult shouldBe a[Right[_, _]]
+      contentResult shouldBe a[Right[?, ?]]
       val content       = contentResult.getOrElse(fail("Expected Right but got Left"))
 
       val saveResult =
@@ -554,7 +554,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
           ArtifactType.JsonSchema,
           testLogger
         )
-      saveResult shouldBe a[Right[_, _]]
+      saveResult shouldBe a[Right[?, ?]]
 
       val savedFile = saveResult.getOrElse(fail("Expected Right but got Left"))
       savedFile.exists() shouldBe true
@@ -570,7 +570,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
     try {
       val result = client.getVersionContent(testGroupId, "TestProduct", "latest")
 
-      result shouldBe a[Right[_, _]]
+      result shouldBe a[Right[?, ?]]
       val content = result.getOrElse(fail("Expected Right but got Left"))
       content should include("TestProduct")
     } finally client.close()
@@ -592,7 +592,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
     try {
       val result = client.createVersion(testGroupId, "TestUser", modifiedContent, avroSchema.fileExtension)
 
-      result shouldBe a[Right[_, _]]
+      result shouldBe a[Right[?, ?]]
       val version = result.getOrElse(fail("Expected Right but got Left"))
       version.artifactId shouldBe "TestUser"
       version.version.toInt should be > 1
@@ -631,7 +631,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
           ApicurioModels.CompatibilityLevel.Backward
         )
 
-        publishResult shouldBe a[Right[_, _]]
+        publishResult shouldBe a[Right[?, ?]]
         artifactId
       }
 
@@ -641,8 +641,8 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
         val metadataResult = client.getArtifactMetadata(dependency.groupId, dependency.artifactId)
         val contentResult  = client.getVersionContent(dependency.groupId, dependency.artifactId, "latest")
 
-        metadataResult shouldBe a[Right[_, _]]
-        contentResult shouldBe a[Right[_, _]]
+        metadataResult shouldBe a[Right[?, ?]]
+        contentResult shouldBe a[Right[?, ?]]
 
         val metadata     = metadataResult.getOrElse(fail("Expected Right but got Left"))
         val content      = contentResult.getOrElse(fail("Expected Right but got Left"))
@@ -656,7 +656,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
 
         val saveResult =
           SchemaFileUtils.saveSchema(outputDir, dependency, content, contentType, artifactType, testLogger)
-        saveResult shouldBe a[Right[_, _]]
+        saveResult shouldBe a[Right[?, ?]]
         val savedFile  = saveResult.getOrElse(fail("Expected Right but got Left"))
         savedFile.exists() shouldBe true
       }
@@ -683,7 +683,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
     try {
       val result = client.getArtifactMetadata(testGroupId, "NonExistentArtifact")
 
-      result shouldBe a[Left[_, _]]
+      result shouldBe a[Left[?, ?]]
       result match {
         case Left(ApicurioError.ArtifactNotFound(groupId, artifactId)) =>
           groupId shouldBe testGroupId
@@ -701,7 +701,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
     try {
       val result = client.getVersionContent(testGroupId, "TestUser", "999")
 
-      result shouldBe a[Left[_, _]]
+      result shouldBe a[Left[?, ?]]
       result match {
         case Left(ApicurioError.VersionNotFound(groupId, artifactId, version)) =>
           groupId shouldBe testGroupId
@@ -727,7 +727,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
         "json"
       )
 
-      result shouldBe a[Left[_, _]]
+      result shouldBe a[Left[?, ?]]
       result match {
         case Left(ApicurioError.InvalidSchema(reason)) =>
           reason should include("parse")
@@ -817,7 +817,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
   it should "handle empty schema list in dependency ordering" in {
     val result = SchemaReferenceUtils.orderSchemasByDependencies(List.empty, testLogger)
 
-    result shouldBe a[Right[_, _]]
+    result shouldBe a[Right[?, ?]]
     result.getOrElse(fail("Expected Right")) shouldBe empty
   }
 
@@ -832,7 +832,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
 
     val result = SchemaReferenceUtils.orderSchemasByDependencies(schemasWithRefs, testLogger)
 
-    result shouldBe a[Right[_, _]]
+    result shouldBe a[Right[?, ?]]
     val ordered = result.getOrElse(fail("Expected Right"))
     ordered.size shouldBe schemasWithRefs.size
   }
@@ -881,7 +881,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
 
     val result = SchemaReferenceUtils.orderSchemasByDependencies(schemasWithRefs, testLogger)
 
-    result shouldBe a[Left[_, _]]
+    result shouldBe a[Left[?, ?]]
     result match {
       case Left(ApicurioError.CircularDependency(schemas)) =>
         schemas should contain allOf ("A", "B", "C")
@@ -923,7 +923,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
 
     val result = SchemaReferenceUtils.orderSchemasByDependencies(schemasWithRefs, testLogger)
 
-    result shouldBe a[Right[_, _]]
+    result shouldBe a[Right[?, ?]]
     val ordered = result.getOrElse(fail("Expected Right"))
     ordered.size shouldBe 3
 
@@ -951,7 +951,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
 
     val result = SchemaReferenceUtils.orderSchemasByDependencies(schemasWithRefs, testLogger)
 
-    result shouldBe a[Right[_, _]]
+    result shouldBe a[Right[?, ?]]
     val ordered = result.getOrElse(fail("Expected Right"))
     ordered.size shouldBe 4
 
@@ -985,7 +985,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
         ApicurioModels.CompatibilityLevel.Backward
       )
 
-      result shouldBe a[Right[_, _]]
+      result shouldBe a[Right[?, ?]]
       // Result may be true or false depending on whether the artifact exists and compatibility rules
       result.isRight shouldBe true
     } finally client.close()
@@ -1040,7 +1040,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
             testLogger
           )
 
-          depsResult shouldBe a[Right[_, _]]
+          depsResult shouldBe a[Right[?, ?]]
           val deps = depsResult.getOrElse(fail("Expected Right"))
 
           // Should return empty list since there are no dependencies
@@ -1109,7 +1109,7 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
       )
 
       // Should return an error (artifact not found) rather than hanging or stack overflow
-      result shouldBe a[Left[_, _]]
+      result shouldBe a[Left[?, ?]]
     } finally client.close()
   }
 
