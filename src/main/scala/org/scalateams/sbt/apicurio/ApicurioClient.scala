@@ -1,10 +1,10 @@
 package org.scalateams.sbt.apicurio
 
-import org.scalateams.sbt.apicurio.ApicurioModels._
-import io.circe.parser._
+import org.scalateams.sbt.apicurio.ApicurioModels.*
+import io.circe.parser.*
 import sbt.util.Logger
-import sttp.client3._
-import sttp.client3.circe._
+import sttp.client3.*
+import sttp.client3.circe.*
 
 import java.security.MessageDigest
 import scala.util.Try

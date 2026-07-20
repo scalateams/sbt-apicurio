@@ -535,6 +535,8 @@ git commit -m "refactor: port plugin sources to Scala 3 (enums, given, exports)"
 
 ## Task 3: Wrap effectful tasks in `Def.uncached`
 
+> **EXECUTION NOTE (2026-07-20): FOLDED INTO TASK 2.** During execution we found that sbt 2.x's action-caching macro fails at *compile time* (not just runtime) when a task result type lacks a `HashWriter`/`JsonFormat` (e.g. `Seq[File]`, `Seq[SchemaFile]`). `Def.uncached` is therefore a prerequisite for `sbt compile` to succeed, so this task was merged into Task 2 and executed there. The steps below are retained for reference.
+
 **Files:**
 - Modify: `src/main/scala/org/scalateams/sbt/apicurio/ApicurioPlugin.scala`
 

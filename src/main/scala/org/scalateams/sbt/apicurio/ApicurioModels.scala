@@ -1,23 +1,21 @@
 package org.scalateams.sbt.apicurio
 
 import io.circe.{Decoder, Encoder}
-import io.circe.generic.semiauto._
+import io.circe.generic.semiauto.*
 
 object ApicurioModels {
 
-  sealed trait CompatibilityLevel {
-    def value: String
+  enum CompatibilityLevel(val value: String) {
+    case Backward           extends CompatibilityLevel("BACKWARD")
+    case BackwardTransitive extends CompatibilityLevel("BACKWARD_TRANSITIVE")
+    case Forward            extends CompatibilityLevel("FORWARD")
+    case ForwardTransitive  extends CompatibilityLevel("FORWARD_TRANSITIVE")
+    case Full               extends CompatibilityLevel("FULL")
+    case FullTransitive     extends CompatibilityLevel("FULL_TRANSITIVE")
+    case None               extends CompatibilityLevel("NONE")
   }
 
   object CompatibilityLevel {
-    case object Backward           extends CompatibilityLevel { val value = "BACKWARD"            }
-    case object BackwardTransitive extends CompatibilityLevel { val value = "BACKWARD_TRANSITIVE" }
-    case object Forward            extends CompatibilityLevel { val value = "FORWARD"             }
-    case object ForwardTransitive  extends CompatibilityLevel { val value = "FORWARD_TRANSITIVE"  }
-    case object Full               extends CompatibilityLevel { val value = "FULL"                }
-    case object FullTransitive     extends CompatibilityLevel { val value = "FULL_TRANSITIVE"     }
-    case object None               extends CompatibilityLevel { val value = "NONE"                }
-
     def fromString(s: String): Option[CompatibilityLevel] = s.toUpperCase match {
       case "BACKWARD"            => Some(Backward)
       case "BACKWARD_TRANSITIVE" => Some(BackwardTransitive)
@@ -30,17 +28,15 @@ object ApicurioModels {
     }
   }
 
-  sealed trait ArtifactType {
-    def value: String
+  enum ArtifactType(val value: String) {
+    case Avro       extends ArtifactType("AVRO")
+    case Protobuf   extends ArtifactType("PROTOBUF")
+    case JsonSchema extends ArtifactType("JSON")
+    case OpenApi    extends ArtifactType("OPENAPI")
+    case AsyncApi   extends ArtifactType("ASYNCAPI")
   }
 
   object ArtifactType {
-    case object Avro       extends ArtifactType { val value = "AVRO"     }
-    case object Protobuf   extends ArtifactType { val value = "PROTOBUF" }
-    case object JsonSchema extends ArtifactType { val value = "JSON"     }
-    case object OpenApi    extends ArtifactType { val value = "OPENAPI"  }
-    case object AsyncApi   extends ArtifactType { val value = "ASYNCAPI" }
-
     def fromExtension(ext: String): Option[ArtifactType] = ext.toLowerCase match {
       case "avsc" | "avro" => Some(Avro)
       case "proto"         => Some(Protobuf)
@@ -73,8 +69,8 @@ object ApicurioModels {
     labels: Option[Map[String, String]] = None)
 
   object ArtifactMetadata {
-    implicit val decoder: Decoder[ArtifactMetadata] = deriveDecoder
-    implicit val encoder: Encoder[ArtifactMetadata] = deriveEncoder
+    given Decoder[ArtifactMetadata] = deriveDecoder[ArtifactMetadata]
+    given Encoder[ArtifactMetadata] = deriveEncoder[ArtifactMetadata]
   }
 
   // Response from POST /groups/{groupId}/artifacts (contains both artifact and version)
@@ -83,7 +79,7 @@ object ApicurioModels {
     version: VersionMetadata)
 
   object CreateArtifactResponse {
-    implicit val decoder: Decoder[CreateArtifactResponse] = deriveDecoder
+    given Decoder[CreateArtifactResponse] = deriveDecoder[CreateArtifactResponse]
   }
 
   case class CreateArtifactRequest(
@@ -94,7 +90,7 @@ object ApicurioModels {
     description: Option[String] = None)
 
   object CreateArtifactRequest {
-    implicit val encoder: Encoder[CreateArtifactRequest] = deriveEncoder
+    given Encoder[CreateArtifactRequest] = deriveEncoder[CreateArtifactRequest]
   }
 
   case class FirstVersionRequest(
@@ -104,7 +100,7 @@ object ApicurioModels {
     description: Option[String] = None)
 
   object FirstVersionRequest {
-    implicit val encoder: Encoder[FirstVersionRequest] = deriveEncoder
+    given Encoder[FirstVersionRequest] = deriveEncoder[FirstVersionRequest]
   }
 
   case class ContentRequest(
@@ -113,7 +109,7 @@ object ApicurioModels {
     references: List[ContentReference] = List.empty)
 
   object ContentRequest {
-    implicit val encoder: Encoder[ContentRequest] = deriveEncoder
+    given Encoder[ContentRequest] = deriveEncoder[ContentRequest]
   }
 
   case class ContentReference(
@@ -123,7 +119,7 @@ object ApicurioModels {
     name: String)
 
   object ContentReference {
-    implicit val encoder: Encoder[ContentReference] = deriveEncoder
+    given Encoder[ContentReference] = deriveEncoder[ContentReference]
   }
 
   case class CreateVersionRequest(
@@ -133,7 +129,7 @@ object ApicurioModels {
     description: Option[String] = None)
 
   object CreateVersionRequest {
-    implicit val encoder: Encoder[CreateVersionRequest] = deriveEncoder
+    given Encoder[CreateVersionRequest] = deriveEncoder[CreateVersionRequest]
   }
 
   // Version-level metadata
@@ -152,7 +148,7 @@ object ApicurioModels {
     labels: Option[Map[String, String]] = None)
 
   object VersionMetadata {
-    implicit val decoder: Decoder[VersionMetadata] = deriveDecoder
+    given Decoder[VersionMetadata] = deriveDecoder[VersionMetadata]
   }
 
   case class ApicurioDependency(
@@ -162,8 +158,7 @@ object ApicurioModels {
     override def toString: String = s"$groupId % $artifactId % $version"
   }
 
-  /** Schema content with metadata for determining file format
-    */
+  /** Schema content with metadata for determining file format */
   case class SchemaContentWithMetadata(
     content: String,
     contentType: String,
@@ -181,11 +176,10 @@ object ApicurioModels {
     message: Option[String] = None)
 
   object CompatibilityCheckResult {
-    implicit val decoder: Decoder[CompatibilityCheckResult] = deriveDecoder
+    given Decoder[CompatibilityCheckResult] = deriveDecoder[CompatibilityCheckResult]
   }
 
-  /** Keycloak OAuth2 configuration for client credentials flow
-    */
+  /** Keycloak OAuth2 configuration for client credentials flow */
   case class KeycloakConfig(
     url: String,
     realm: String,
@@ -196,8 +190,7 @@ object ApicurioModels {
     def tokenEndpoint: String = s"$url/realms/$realm/protocol/openid-connect/token"
   }
 
-  /** OAuth2 token response from Keycloak token endpoint
-    */
+  /** OAuth2 token response from Keycloak token endpoint */
   case class TokenResponse(
     access_token: String,
     expires_in: Long,
@@ -206,42 +199,39 @@ object ApicurioModels {
     scope: Option[String] = None)
 
   object TokenResponse {
-    implicit val decoder: Decoder[TokenResponse] = deriveDecoder
+    given Decoder[TokenResponse] = deriveDecoder[TokenResponse]
   }
 
-  /** Functional error types for Apicurio operations. Using Either[ApicurioError, T] instead of Try[T] provides:
-    *   - Type safety: All errors are known at compile time
-    *   - Composability: Easy to chain operations with flatMap/map
-    *   - Explicit error handling: No hidden exceptions
-    *   - Better error messages: Structured error information
+  /** Functional error types for Apicurio operations. Using Either[ApicurioError, T] instead of Try[T] provides type
+    * safety, composability, explicit error handling, and structured messages.
     */
-  sealed trait ApicurioError {
-    def message: String
-  }
-
-  object ApicurioError {
-    final case class ArtifactNotFound(groupId: String, artifactId: String) extends ApicurioError {
-      def message: String = s"Artifact not found: $groupId:$artifactId"
-    }
-
-    final case class VersionNotFound(
+  enum ApicurioError {
+    case ArtifactNotFound(groupId: String, artifactId: String)
+    case VersionNotFound(
       groupId: String,
       artifactId: String,
       version: String)
-        extends ApicurioError {
-      def message: String = s"Version not found: $groupId:$artifactId:$version"
-    }
-
-    final case class IncompatibleSchema(
+    case IncompatibleSchema(
       groupId: String,
       artifactId: String,
       reason: String)
-        extends ApicurioError {
-      def message: String = s"Schema is not compatible with existing versions: $groupId:$artifactId - $reason"
-    }
+    case CircularDependency(schemas: Set[String])
+    case InvalidSchema(reason: String)
+    case HttpError(statusCode: Int, body: String)
+    case NetworkError(cause: Throwable)
+    case ParseError(reason: String)
+    case ConfigurationError(reason: String)
+    case AuthenticationError(reason: String, cause: Option[Throwable] = None)
+    case TokenRefreshError(reason: String, cause: Option[Throwable] = None)
 
-    final case class CircularDependency(schemas: Set[String]) extends ApicurioError {
-      def message: String = {
+    def message: String = this match {
+      case ArtifactNotFound(groupId, artifactId)           =>
+        s"Artifact not found: $groupId:$artifactId"
+      case VersionNotFound(groupId, artifactId, version)   =>
+        s"Version not found: $groupId:$artifactId:$version"
+      case IncompatibleSchema(groupId, artifactId, reason) =>
+        s"Schema is not compatible with existing versions: $groupId:$artifactId - $reason"
+      case CircularDependency(schemas)                     =>
         val schemaList = schemas.toList.sorted.mkString(", ")
         s"""Circular dependency detected among schemas: $schemaList
            |
@@ -252,39 +242,18 @@ object ApicurioModels {
            |1. Review the schema references to identify the circular dependency chain
            |2. Refactor schemas to break the cycle (e.g., extract common types into a separate schema)
            |3. Ensure dependencies flow in one direction only""".stripMargin
-      }
-    }
-
-    final case class InvalidSchema(reason: String) extends ApicurioError {
-      def message: String = s"Invalid schema: $reason"
-    }
-
-    final case class HttpError(statusCode: Int, body: String) extends ApicurioError {
-      def message: String = s"HTTP error $statusCode: $body"
-    }
-
-    final case class NetworkError(cause: Throwable) extends ApicurioError {
-      def message: String = s"Network error: ${cause.getMessage}"
-    }
-
-    final case class ParseError(reason: String) extends ApicurioError {
-      def message: String = s"Parse error: $reason"
-    }
-
-    final case class ConfigurationError(reason: String) extends ApicurioError {
-      def message: String = s"Configuration error: $reason"
-    }
-
-    final case class AuthenticationError(reason: String, cause: Option[Throwable] = None) extends ApicurioError {
-      def message: String = s"Authentication error: $reason${cause.map(c => s" (${c.getMessage})").getOrElse("")}"
-    }
-
-    final case class TokenRefreshError(reason: String, cause: Option[Throwable] = None) extends ApicurioError {
-      def message: String = s"Token refresh error: $reason${cause.map(c => s" (${c.getMessage})").getOrElse("")}"
+      case InvalidSchema(reason)                           => s"Invalid schema: $reason"
+      case HttpError(statusCode, body)                     => s"HTTP error $statusCode: $body"
+      case NetworkError(cause)                             => s"Network error: ${cause.getMessage}"
+      case ParseError(reason)                              => s"Parse error: $reason"
+      case ConfigurationError(reason)                      => s"Configuration error: $reason"
+      case AuthenticationError(reason, cause)              =>
+        s"Authentication error: $reason${cause.map(c => s" (${c.getMessage})").getOrElse("")}"
+      case TokenRefreshError(reason, cause)                =>
+        s"Token refresh error: $reason${cause.map(c => s" (${c.getMessage})").getOrElse("")}"
     }
   }
 
-  /** Type alias for Either-based results
-    */
+  /** Type alias for Either-based results */
   type ApicurioResult[T] = Either[ApicurioError, T]
 }

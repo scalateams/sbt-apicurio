@@ -1,7 +1,7 @@
 package org.scalateams.sbt.apicurio
 
-import org.scalateams.sbt.apicurio.ApicurioModels._
-import sbt._
+import org.scalateams.sbt.apicurio.ApicurioModels.*
+import sbt.*
 import sbt.util.Logger
 
 import java.security.MessageDigest

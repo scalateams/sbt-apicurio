@@ -1,14 +1,28 @@
 package org.scalateams.sbt.apicurio
 
-import org.scalateams.sbt.apicurio.ApicurioModels._
-import sbt.Keys._
-import sbt._
+import org.scalateams.sbt.apicurio.ApicurioModels.*
+import sbt.Keys.*
+import sbt.*
 
 // All error handling uses Either pattern consistently
 
 object ApicurioPlugin extends AutoPlugin {
 
   override def trigger = noTrigger
+
+  // Immutable accumulator for apicurioPublish's publishing state. Hoisted out of the task body
+  // (rather than declared as a local `case class` inside `Def.uncached { ... }`) because a
+  // locally-scoped case class inside an sbt 2.x `Def.uncached` block trips a macro-hygiene bug
+  // in the task-continuation macro ("a reference to value publishedVersions was used outside the
+  // scope where it was defined") — the class's auto-generated members (copy, equals, ...) get
+  // spliced with an incorrect owner when nested inside both the `.value`-scanning task macro and
+  // Def.uncached's own macro expansion. Same fields, same semantics, only the declaration site
+  // moved.
+  private[apicurio] case class PublishState(
+    publishedVersions: Map[String, String],
+    published: Int,
+    unchanged: Int,
+    failed: Int)
 
   object autoImport {
     // Settings - URL components
@@ -43,11 +57,8 @@ object ApicurioPlugin extends AutoPlugin {
     val apicurioDiscoverSchemas  = taskKey[Seq[SchemaFile]]("Discover all schema files")
     val apicurioValidateSettings = taskKey[Unit]("Validate Apicurio plugin settings")
 
-    // Re-export models for easy access
-    val CompatibilityLevel = ApicurioModels.CompatibilityLevel
-    type CompatibilityLevel = ApicurioModels.CompatibilityLevel
-    val KeycloakConfig = ApicurioModels.KeycloakConfig
-    type KeycloakConfig = ApicurioModels.KeycloakConfig
+    // Re-export models for easy access in build.sbt
+    export ApicurioModels.{CompatibilityLevel, KeycloakConfig}
 
     /** Helper method to create Keycloak configuration for OAuth2 authentication.
       *
@@ -109,9 +120,9 @@ object ApicurioPlugin extends AutoPlugin {
       ApicurioDependency(groupId, artifactId, version)
   }
 
-  import autoImport._
+  import autoImport.*
 
-  override lazy val projectSettings: Seq[Setting[_]] = Seq(
+  override lazy val projectSettings: Seq[Setting[?]] = Seq(
     // Default settings
     apicurioRegistryScheme          := "https",
     apicurioRegistryPort            := None,
@@ -125,7 +136,7 @@ object ApicurioPlugin extends AutoPlugin {
     apicurioPullWarnOnStaleVersions := true,
 
     // Help task
-    apicurioHelp := {
+    apicurioHelp := Def.uncached {
       val log = streams.value.log
 
       log.info("")
@@ -270,7 +281,7 @@ object ApicurioPlugin extends AutoPlugin {
     },
 
     // Discovery task
-    apicurioDiscoverSchemas := {
+    apicurioDiscoverSchemas := Def.uncached {
       val paths = apicurioSchemaPaths.value
       val log   = streams.value.log
 
@@ -293,7 +304,7 @@ object ApicurioPlugin extends AutoPlugin {
     },
 
     // Validation task
-    apicurioValidateSettings := {
+    apicurioValidateSettings := Def.uncached {
       val log            = streams.value.log
       val scheme         = apicurioRegistryScheme.?.value
       val host           = apicurioRegistryHost.?.value
@@ -329,7 +340,7 @@ object ApicurioPlugin extends AutoPlugin {
     },
 
     // Pull task - runs before compile
-    apicurioPull := {
+    apicurioPull := Def.uncached {
       val log            = streams.value.log
       val scheme         = apicurioRegistryScheme.?.value
       val host           = apicurioRegistryHost.?.value
@@ -467,7 +478,7 @@ object ApicurioPlugin extends AutoPlugin {
     },
 
     // Publish task
-    apicurioPublish := {
+    apicurioPublish := Def.uncached {
       val log            = streams.value.log
       val scheme         = apicurioRegistryScheme.?.value
       val host           = apicurioRegistryHost.?.value
@@ -522,13 +533,6 @@ object ApicurioPlugin extends AutoPlugin {
 
               // Create schema map for reference resolution
               val schemaMap = orderedSchemas.map(s => s.artifactId -> s).toMap
-
-              // Immutable accumulator for publishing state
-              case class PublishState(
-                publishedVersions: Map[String, String],
-                published: Int,
-                unchanged: Int,
-                failed: Int)
 
               // Helper function to resolve references with current state
               def resolveReferences(
@@ -651,7 +655,7 @@ object ApicurioPlugin extends AutoPlugin {
     },
 
     // Hook pull into compile
-    Compile / compile := {
+    Compile / compile := Def.uncached {
       apicurioPull.value
       (Compile / compile).value
     }

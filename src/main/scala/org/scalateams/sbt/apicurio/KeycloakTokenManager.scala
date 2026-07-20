@@ -1,8 +1,8 @@
 package org.scalateams.sbt.apicurio
 
-import org.scalateams.sbt.apicurio.ApicurioModels._
-import sttp.client3._
-import sttp.client3.circe._
+import org.scalateams.sbt.apicurio.ApicurioModels.*
+import sttp.client3.*
+import sttp.client3.circe.*
 
 import java.util.concurrent.atomic.AtomicReference
 import scala.util.Try
