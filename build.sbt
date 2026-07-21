@@ -1,7 +1,7 @@
 // Use inThisBuild for settings that should apply to the entire build
 inThisBuild(
   List(
-    organization := "com.scalateams",
+    organization := "org.scalateams",
     homepage     := Some(url("https://github.com/scalateams/sbt-apicurio")),
     licenses     := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
     developers   := List(
