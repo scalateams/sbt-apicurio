@@ -70,6 +70,12 @@ private[apicurio] object SemanticVersionOrdering extends Ordering[String] {
   }
 
   // Long (not Int) so that large all-digit components do not overflow and get demoted to non-semver.
+  //
+  // Leading zeros are accepted on purpose ("01" orders as 1). This ordering drives version
+  // *precedence*, not strict semver *validation*: semver §9/§11 forbid leading zeros, but rejecting
+  // them here would only demote an otherwise-benign version string to "non-semver" and sort it below
+  // real versions — worse behavior than treating it numerically. Do not tighten this into a strict
+  // parser without also deciding what should happen to the versions it would start rejecting.
   private def parseNonNegativeLong(s: String): Option[Long] =
     if (s.nonEmpty && s.forall(_.isDigit)) Try(s.toLong).toOption else None
 

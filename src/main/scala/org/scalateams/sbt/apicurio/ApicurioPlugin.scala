@@ -364,28 +364,12 @@ object ApicurioPlugin extends AutoPlugin {
           case Right((validUrl, validKeycloakConfig, _)) =>
             ApicurioClient.withClient(validUrl, validKeycloakConfig, log) { client =>
               // Warn about declared dependencies pinned to a version older than the registry's
-              // latest. A pin equal to latest is fine (no drift) and stays silent; only a stale
-              // pin can miss compatible updates. Versions are compared by semantic-version
-              // precedence, so "3" and "3.0.0" are equal. Transitive dependencies are not checked
-              // here — they inherit their parent's version. Each pinned dependency costs one extra
-              // registry lookup, so the whole check is skipped when warnOnStale is disabled.
+              // latest. See SchemaFileUtils.computeStalePins for the full semantics (a pin equal to
+              // latest is not stale; "latest" pins are skipped; lookup failures are ignored). Each
+              // non-"latest" pin costs one registry lookup, so the check is skipped when warnOnStale
+              // is disabled. This runs on every compile via the pull hook — see apicurioPull's docs.
               val stalePins =
-                if (!warnOnStale) Seq.empty
-                else
-                  dependencies.flatMap { dep =>
-                    if (dep.version.equalsIgnoreCase("latest")) None
-                    else
-                      client.getLatestVersion(dep.groupId, dep.artifactId) match {
-                        case Right(latest) if SemanticVersionOrdering.compare(dep.version, latest.version) < 0 =>
-                          Some((dep, latest.version))
-                        case Right(_)                                                                          => None
-                        case Left(err)                                                                         =>
-                          log.debug(
-                            s"Could not check latest version for ${dep.groupId}:${dep.artifactId}: ${err.message}"
-                          )
-                          None
-                      }
-                  }
+                SchemaFileUtils.computeStalePins(dependencies, warnOnStale, client.getLatestVersion(_, _), log)
               if (stalePins.nonEmpty) {
                 log.warn(
                   s"""${stalePins.size} schema dependency(ies) pinned to a version older than the registry's "latest":"""
@@ -654,7 +638,22 @@ object ApicurioPlugin extends AutoPlugin {
       }
     },
 
-    // Hook pull into compile
+    // Hook pull into compile: run apicurioPull before every compile so schema dependencies are
+    // present before sources are built.
+    //
+    // Wrapped in Def.uncached for two reasons:
+    //   1. Necessity — sbt 2's action-caching macro cannot cache a redefinition of `Compile /
+    //      compile`: it finds no `JsonFormat[xsbti.compile.CompileAnalysis]` at this call site and
+    //      fails to compile ("opt out with Def.uncached, or provide a given value"). The `dependsOn`
+    //      form hits the identical error, and the required JsonFormat is an sbt-internal instance we
+    //      do not want to reach into.
+    //   2. Correctness — if this compile were action-cached, a cache hit would skip the task body
+    //      entirely, so apicurioPull would never run and freshly-pulled schemas could be missed.
+    //      Opting out guarantees the pull runs before each compile.
+    //
+    // Trade-off (documented in README/CHANGELOG): for any project that enables this plugin,
+    // `Compile / compile` no longer participates in sbt 2's local/remote action cache. Zinc
+    // incremental compilation is unaffected.
     Compile / compile := Def.uncached {
       apicurioPull.value
       (Compile / compile).value

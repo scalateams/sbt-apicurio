@@ -22,6 +22,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the standalone `scalafmt` CLI via Coursier (`cs launch scalafmt`), invoked
   directly in CI and for local formatting.
 
+### Caveats (sbt 2)
+- **`Compile / compile` opts out of sbt 2's action cache** in projects that
+  enable this plugin. The pull-before-compile hook redefines `compile`, which
+  sbt 2 cannot action-cache; `Def.uncached` is both required to compile and
+  necessary so the pull is never skipped by a cache hit. Zinc incremental
+  compilation is unaffected; only the local/remote action cache for `compile`
+  is disabled.
+- **`apicurioPull` runs before every compile**, so with
+  `apicurioPullWarnOnStaleVersions` enabled (default) each *pinned* dependency
+  costs one registry lookup per compile. Use `"latest"` pins (no lookup) or set
+  `apicurioPullWarnOnStaleVersions := false` to avoid this in tight edit/compile
+  loops.
+
 ---
 
 ## [0.2.0] - 2025-11-17

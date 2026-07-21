@@ -317,6 +317,13 @@ Schemas are automatically pulled before compilation starts:
 sbt compile  # Automatically pulls dependencies first
 ```
 
+> **sbt 2 caching caveat:** to guarantee `apicurioPull` runs before *every* compile, enabling this
+> plugin opts your project's `Compile / compile` task out of sbt 2's local/remote action cache. (Zinc
+> incremental compilation is unaffected — only the Bazel-style action cache is.) This is required by
+> sbt 2's task-caching model: a redefined `compile` cannot be action-cached here, and if it could, a
+> cache hit would skip the pull entirely. If your CI relies on the action cache for `compile`, expect
+> projects that enable this plugin to recompile rather than restore that task from cache.
+
 **Manual pull:**
 
 ```bash
@@ -355,7 +362,9 @@ With `apicurioPullRecursive := true`: All three schemas (`OrderPlaced`, `Custome
 
 `"latest"` is resolved to the highest version using **Semantic Versioning** precedence (e.g. `10.0.0` is newer than `9.0.0`, and `3.10.0` is newer than `3.2.0`), not a lexicographic string comparison.
 
-When a dependency is pinned to a concrete version older than the registry's latest, `apicurioPull` emits a warning so you can decide whether to update. The check runs one extra registry lookup per pinned dependency (dependencies on `"latest"` incur none); disable it with:
+When a dependency is pinned to a concrete version older than the registry's latest, `apicurioPull` emits a warning so you can decide whether to update. The check runs one extra registry lookup per pinned dependency (dependencies on `"latest"` incur none).
+
+Because `apicurioPull` runs before **every** `compile` (not only clean builds), each pinned dependency costs one registry round-trip on every compile in a tight edit/compile loop. To avoid that latency, pin to `"latest"` (which needs no lookup) or disable the check:
 
 ```scala
 apicurioPullWarnOnStaleVersions := false
