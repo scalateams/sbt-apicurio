@@ -26,6 +26,8 @@ This plugin was developed as an experiment to evaluate how effectively an LLM ca
 
 This plugin is published to Maven Central. Add it to your `project/plugins.sbt`:
 
+> Requires **sbt 2.x** and **JDK 17+**. (sbt 1.x users: use the 0.3.x line, the final sbt 1.x release.)
+
 ```scala
 addSbtPlugin("org.scalateams" % "sbt-apicurio" % "<version>")
 ```
@@ -40,7 +42,7 @@ Snapshot versions are published on every commit to `main` branch:
 
 ```scala
 resolvers += Resolver.sonatypeRepo("snapshots")
-addSbtPlugin("org.scalateams" % "sbt-apicurio" % "0.1.0+<commits>-<hash>-SNAPSHOT")
+addSbtPlugin("org.scalateams" % "sbt-apicurio" % "1.0.0+<commits>-<hash>-SNAPSHOT")
 ```
 
 ## Quick Start
@@ -133,6 +135,7 @@ sbt apicurioPublish
 | `apicurioPullOutputDir` | `File` | `target/schemas` | Output directory for pulled schemas |
 | `apicurioPullDependencies` | `Seq[ApicurioDependency]` | `Seq.empty` | External schemas to pull |
 | `apicurioPullRecursive` | `Boolean` | `false` | Recursively pull transitive schema dependencies |
+| `apicurioPullWarnOnStaleVersions` | `Boolean` | `true` | Warn when a declared dependency is pinned to a version older than the registry's latest (one extra registry lookup per pinned dependency) |
 
 ### Compatibility Levels
 
@@ -314,6 +317,13 @@ Schemas are automatically pulled before compilation starts:
 sbt compile  # Automatically pulls dependencies first
 ```
 
+> **sbt 2 caching caveat:** to guarantee `apicurioPull` runs before *every* compile, enabling this
+> plugin opts your project's `Compile / compile` task out of sbt 2's local/remote action cache. (Zinc
+> incremental compilation is unaffected — only the Bazel-style action cache is.) This is required by
+> sbt 2's task-caching model: a redefined `compile` cannot be action-cached here, and if it could, a
+> cache hit would skip the pull entirely. If your CI relies on the action cache for `compile`, expect
+> projects that enable this plugin to recompile rather than restore that task from cache.
+
 **Manual pull:**
 
 ```bash
@@ -347,6 +357,20 @@ apicurioPullRecursive := true
 With `apicurioPullRecursive := false` (default): Only `OrderPlaced` is pulled
 
 With `apicurioPullRecursive := true`: All three schemas (`OrderPlaced`, `Customer`, and `Address`) are pulled recursively
+
+#### Version Resolution and Stale-Pin Warnings
+
+`"latest"` is resolved to the highest version using **Semantic Versioning** precedence (e.g. `10.0.0` is newer than `9.0.0`, and `3.10.0` is newer than `3.2.0`), not a lexicographic string comparison.
+
+When a dependency is pinned to a concrete version older than the registry's latest, `apicurioPull` emits a warning so you can decide whether to update. The check runs one extra registry lookup per pinned dependency (dependencies on `"latest"` incur none).
+
+Because `apicurioPull` runs before **every** `compile` (not only clean builds), each pinned dependency costs one registry round-trip on every compile in a tight edit/compile loop. To avoid that latency, pin to `"latest"` (which needs no lookup) or disable the check:
+
+```scala
+apicurioPullWarnOnStaleVersions := false
+```
+
+> **Note on non-semver version labels:** Version strings that are not valid semantic versions (e.g. `release-2`, custom tags) are ordered *below* every valid semantic version, so a registry mixing semver and non-semver labels for the same artifact will treat the highest semver version as latest. If your registry relies on non-semver labels, review your pinned versions after upgrading to this release.
 
 ### Custom Schema Locations
 
@@ -617,15 +641,18 @@ addSbtPlugin("org.scalateams" % "sbt-apicurio" % "<version>")
 
 ## Requirements
 
-- SBT 1.x
+- sbt 2.x (built/tested against 2.0.3)
+- JDK 17+
 - Apicurio Registry 3.x
-- Scala 2.12 (for SBT plugin compatibility)
+- Scala 3.8.4 (the plugin's own build; sbt plugins compile against sbt's own Scala version, so this does not constrain the Scala version of consuming projects)
+
+> sbt 1.x users: use the 0.3.x release line (the final sbt 1.x-compatible line); it will not receive new features.
 
 ## CI/CD
 
 This project uses modern CI/CD automation:
 
-- **GitHub Actions**: Runs tests on multiple Java versions (11, 17) and handles automated releases
+- **GitHub Actions**: Runs tests on JDK 17 and handles automated releases
 - **Scala Steward**: Automated dependency updates via [@scala-steward](https://github.com/scala-steward-org/scala-steward)
 - **Mergify**: Auto-merges dependency updates that pass CI
 - **sbt-ci-release**: Automated publishing to Maven Central on git tag push

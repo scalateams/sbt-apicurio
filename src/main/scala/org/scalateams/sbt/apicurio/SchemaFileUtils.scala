@@ -1,7 +1,7 @@
 package org.scalateams.sbt.apicurio
 
-import org.scalateams.sbt.apicurio.ApicurioModels._
-import sbt._
+import org.scalateams.sbt.apicurio.ApicurioModels.*
+import sbt.*
 import sbt.util.Logger
 
 import java.security.MessageDigest
@@ -43,7 +43,7 @@ object SchemaFileUtils {
 
     val subDirSchemas = dirs.flatMap(discoverSchemasRecursive(_, logger))
 
-    schemaFiles ++ subDirSchemas
+    (schemaFiles ++ subDirSchemas).toIndexedSeq
   }
 
   /** Check if a file is a schema file based on extension
@@ -227,4 +227,37 @@ object SchemaFileUtils {
       )
       targetFile
     }.toEither.left.map(ex => ApicurioError.ConfigurationError(s"Failed to save schema: ${ex.getMessage}"))
+
+  /** Selects declared dependencies pinned to a version older than the registry's "latest".
+    *
+    * Pure over an injected `latestVersionOf` lookup so it can be unit-tested without a live client. A pin of "latest"
+    * is skipped entirely (no lookup). Versions are compared by semantic-version precedence, so a pin equal to latest
+    * (e.g. "3" vs "3.0.0") is NOT stale — only a strictly older pin is reported. A lookup failure is logged at debug
+    * and treated as "not stale" (an unavailable registry never blocks the build). Each non-"latest" pin costs one
+    * `latestVersionOf` call, so the whole check is skipped when `warnOnStale` is false. Transitive dependencies are not
+    * checked here; they inherit their parent's version.
+    *
+    * @return
+    *   the stale pins as (dependency, registry-latest-version) pairs
+    */
+  def computeStalePins(
+    dependencies: Seq[ApicurioDependency],
+    warnOnStale: Boolean,
+    latestVersionOf: (String, String) => ApicurioResult[VersionMetadata],
+    logger: Logger
+  ): Seq[(ApicurioDependency, String)] =
+    if (!warnOnStale) Seq.empty
+    else
+      dependencies.flatMap { dep =>
+        if (dep.version.equalsIgnoreCase("latest")) None
+        else
+          latestVersionOf(dep.groupId, dep.artifactId) match {
+            case Right(latest) if SemanticVersionOrdering.compare(dep.version, latest.version) < 0 =>
+              Some((dep, latest.version))
+            case Right(_)                                                                          => None
+            case Left(err)                                                                         =>
+              logger.debug(s"Could not check latest version for ${dep.groupId}:${dep.artifactId}: ${err.message}")
+              None
+          }
+      }
 }

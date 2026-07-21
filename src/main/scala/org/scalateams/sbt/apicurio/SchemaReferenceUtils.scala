@@ -1,7 +1,7 @@
 package org.scalateams.sbt.apicurio
 
-import org.scalateams.sbt.apicurio.ApicurioModels._
-import io.circe.parser._
+import org.scalateams.sbt.apicurio.ApicurioModels.*
+import io.circe.parser.*
 import io.circe.Json
 import sbt.util.Logger
 

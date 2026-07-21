@@ -1,8 +1,8 @@
 package org.scalateams.sbt.apicurio
 
-import org.scalateams.sbt.apicurio.ApicurioModels._
-import sbt.Keys._
-import sbt._
+import org.scalateams.sbt.apicurio.ApicurioModels.*
+import sbt.Keys.*
+import sbt.*
 
 // All error handling uses Either pattern consistently
 
@@ -10,26 +10,44 @@ object ApicurioPlugin extends AutoPlugin {
 
   override def trigger = noTrigger
 
+  // Immutable accumulator for apicurioPublish's publishing state. Hoisted out of the task body
+  // (rather than declared as a local `case class` inside `Def.uncached { ... }`) because a
+  // locally-scoped case class inside an sbt 2.x `Def.uncached` block trips a macro-hygiene bug
+  // in the task-continuation macro ("a reference to value publishedVersions was used outside the
+  // scope where it was defined") — the class's auto-generated members (copy, equals, ...) get
+  // spliced with an incorrect owner when nested inside both the `.value`-scanning task macro and
+  // Def.uncached's own macro expansion. Same fields, same semantics, only the declaration site
+  // moved.
+  private[apicurio] case class PublishState(
+    publishedVersions: Map[String, String],
+    published: Int,
+    unchanged: Int,
+    failed: Int)
+
   object autoImport {
     // Settings - URL components
     val apicurioRegistryScheme = settingKey[String]("Registry URL scheme: http or https (default: https)")
     val apicurioRegistryHost   = settingKey[String]("Registry hostname (e.g., registry.example.com)")
     val apicurioRegistryPort = settingKey[Option[Int]]("Registry port (default: None, uses 443 for https, 80 for http)")
-    val apicurioRegistryApiPath    = settingKey[String]("Registry API path (default: /apis/registry/v3)")
-    val apicurioKeycloakConfig     = settingKey[Option[KeycloakConfig]](
+    val apicurioRegistryApiPath         = settingKey[String]("Registry API path (default: /apis/registry/v3)")
+    val apicurioKeycloakConfig          = settingKey[Option[KeycloakConfig]](
       "Optional Keycloak OAuth2 configuration for authentication (replaces apicurioApiKey)"
     )
-    val apicurioGroupId            = settingKey[String]("Group ID for artifacts (e.g., com.example.yourservice)")
-    val apicurioCompatibilityLevel =
+    val apicurioGroupId                 = settingKey[String]("Group ID for artifacts (e.g., com.example.yourservice)")
+    val apicurioCompatibilityLevel      =
       settingKey[CompatibilityLevel]("Schema compatibility level: Backward, Forward, Full, or None (default: Backward)")
-    val apicurioSchemaPaths        =
+    val apicurioSchemaPaths             =
       settingKey[Seq[File]]("Paths to directories containing schema files (default: src/main/schemas)")
-    val apicurioPullOutputDir      = settingKey[File]("Directory to save pulled schemas (default: target/schemas)")
-    val apicurioPullDependencies   = settingKey[Seq[ApicurioDependency]](
+    val apicurioPullOutputDir           = settingKey[File]("Directory to save pulled schemas (default: target/schemas)")
+    val apicurioPullDependencies        = settingKey[Seq[ApicurioDependency]](
       "List of schema dependencies to pull using schema(groupId, artifactId, version)"
     )
-    val apicurioPullRecursive      = settingKey[Boolean](
+    val apicurioPullRecursive           = settingKey[Boolean](
       "Whether to recursively pull transitive schema dependencies (default: false)"
+    )
+    val apicurioPullWarnOnStaleVersions = settingKey[Boolean](
+      "Whether apicurioPull warns about declared dependencies pinned to a version older than the registry's latest. " +
+        "Each pinned dependency costs one extra registry lookup; set to false to skip the check (default: true)"
     )
 
     // Tasks
@@ -39,11 +57,8 @@ object ApicurioPlugin extends AutoPlugin {
     val apicurioDiscoverSchemas  = taskKey[Seq[SchemaFile]]("Discover all schema files")
     val apicurioValidateSettings = taskKey[Unit]("Validate Apicurio plugin settings")
 
-    // Re-export models for easy access
-    val CompatibilityLevel = ApicurioModels.CompatibilityLevel
-    type CompatibilityLevel = ApicurioModels.CompatibilityLevel
-    val KeycloakConfig = ApicurioModels.KeycloakConfig
-    type KeycloakConfig = ApicurioModels.KeycloakConfig
+    // Re-export models for easy access in build.sbt
+    export ApicurioModels.{CompatibilityLevel, KeycloakConfig}
 
     /** Helper method to create Keycloak configuration for OAuth2 authentication.
       *
@@ -105,22 +120,23 @@ object ApicurioPlugin extends AutoPlugin {
       ApicurioDependency(groupId, artifactId, version)
   }
 
-  import autoImport._
+  import autoImport.*
 
-  override lazy val projectSettings: Seq[Setting[_]] = Seq(
+  override lazy val projectSettings: Seq[Setting[?]] = Seq(
     // Default settings
-    apicurioRegistryScheme     := "https",
-    apicurioRegistryPort       := None,
-    apicurioRegistryApiPath    := "/apis/registry/v3",
-    apicurioKeycloakConfig     := None,
-    apicurioCompatibilityLevel := CompatibilityLevel.Backward,
-    apicurioSchemaPaths        := Seq(sourceDirectory.value / "main" / "schemas"),
-    apicurioPullOutputDir      := target.value / "schemas",
-    apicurioPullDependencies   := Seq.empty,
-    apicurioPullRecursive      := false,
+    apicurioRegistryScheme          := "https",
+    apicurioRegistryPort            := None,
+    apicurioRegistryApiPath         := "/apis/registry/v3",
+    apicurioKeycloakConfig          := None,
+    apicurioCompatibilityLevel      := CompatibilityLevel.Backward,
+    apicurioSchemaPaths             := Seq(sourceDirectory.value / "main" / "schemas"),
+    apicurioPullOutputDir           := target.value / "schemas",
+    apicurioPullDependencies        := Seq.empty,
+    apicurioPullRecursive           := false,
+    apicurioPullWarnOnStaleVersions := true,
 
     // Help task
-    apicurioHelp := {
+    apicurioHelp := Def.uncached {
       val log = streams.value.log
 
       log.info("")
@@ -150,6 +166,7 @@ object ApicurioPlugin extends AutoPlugin {
       log.info("  apicurioPullOutputDir      - Output directory for pulled schemas (default: target/schemas)")
       log.info("  apicurioPullDependencies   - Schema dependencies to pull")
       log.info("  apicurioPullRecursive      - Recursively pull transitive dependencies (default: false)")
+      log.info("  apicurioPullWarnOnStaleVersions - Warn on pins older than the registry's latest (default: true)")
       log.info("")
       log.info("SUPPORTED SCHEMA TYPES:")
       log.info("  • Avro         (.avsc, .avro)")
@@ -264,7 +281,7 @@ object ApicurioPlugin extends AutoPlugin {
     },
 
     // Discovery task
-    apicurioDiscoverSchemas := {
+    apicurioDiscoverSchemas := Def.uncached {
       val paths = apicurioSchemaPaths.value
       val log   = streams.value.log
 
@@ -287,7 +304,7 @@ object ApicurioPlugin extends AutoPlugin {
     },
 
     // Validation task
-    apicurioValidateSettings := {
+    apicurioValidateSettings := Def.uncached {
       val log            = streams.value.log
       val scheme         = apicurioRegistryScheme.?.value
       val host           = apicurioRegistryHost.?.value
@@ -323,7 +340,7 @@ object ApicurioPlugin extends AutoPlugin {
     },
 
     // Pull task - runs before compile
-    apicurioPull := {
+    apicurioPull := Def.uncached {
       val log            = streams.value.log
       val scheme         = apicurioRegistryScheme.?.value
       val host           = apicurioRegistryHost.?.value
@@ -334,6 +351,7 @@ object ApicurioPlugin extends AutoPlugin {
       val outputDir      = apicurioPullOutputDir.value
       val dependencies   = apicurioPullDependencies.value
       val recursive      = apicurioPullRecursive.value
+      val warnOnStale    = apicurioPullWarnOnStaleVersions.value
 
       if (dependencies.isEmpty) {
         log.debug("No schema dependencies configured")
@@ -345,6 +363,27 @@ object ApicurioPlugin extends AutoPlugin {
         SchemaFileUtils.validateSettings(scheme, host, port, apiPath, keycloakConfig, groupId, log) match {
           case Right((validUrl, validKeycloakConfig, _)) =>
             ApicurioClient.withClient(validUrl, validKeycloakConfig, log) { client =>
+              // Warn about declared dependencies pinned to a version older than the registry's
+              // latest. See SchemaFileUtils.computeStalePins for the full semantics (a pin equal to
+              // latest is not stale; "latest" pins are skipped; lookup failures are ignored). Each
+              // non-"latest" pin costs one registry lookup, so the check is skipped when warnOnStale
+              // is disabled. This runs on every compile via the pull hook — see apicurioPull's docs.
+              val stalePins =
+                SchemaFileUtils.computeStalePins(dependencies, warnOnStale, client.getLatestVersion(_, _), log)
+              if (stalePins.nonEmpty) {
+                log.warn(
+                  s"""${stalePins.size} schema dependency(ies) pinned to a version older than the registry's "latest":"""
+                )
+                stalePins.foreach {
+                  case (dep, latestVersion) =>
+                    log.warn(s"  • ${dep.groupId}:${dep.artifactId}: pinned ${dep.version}, latest is $latestVersion")
+                }
+                log.warn(
+                  "Pinned versions can drift from the registry's latest schema and miss compatible updates. " +
+                    "Use \"latest\" unless a specific version is required."
+                )
+              }
+
               // Expand dependencies recursively if requested
               val allDependencies = if (recursive) {
                 log.info(s"Resolving transitive dependencies for ${dependencies.size} schema(s)...")
@@ -423,7 +462,7 @@ object ApicurioPlugin extends AutoPlugin {
     },
 
     // Publish task
-    apicurioPublish := {
+    apicurioPublish := Def.uncached {
       val log            = streams.value.log
       val scheme         = apicurioRegistryScheme.?.value
       val host           = apicurioRegistryHost.?.value
@@ -478,13 +517,6 @@ object ApicurioPlugin extends AutoPlugin {
 
               // Create schema map for reference resolution
               val schemaMap = orderedSchemas.map(s => s.artifactId -> s).toMap
-
-              // Immutable accumulator for publishing state
-              case class PublishState(
-                publishedVersions: Map[String, String],
-                published: Int,
-                unchanged: Int,
-                failed: Int)
 
               // Helper function to resolve references with current state
               def resolveReferences(
@@ -606,8 +638,23 @@ object ApicurioPlugin extends AutoPlugin {
       }
     },
 
-    // Hook pull into compile
-    Compile / compile := {
+    // Hook pull into compile: run apicurioPull before every compile so schema dependencies are
+    // present before sources are built.
+    //
+    // Wrapped in Def.uncached for two reasons:
+    //   1. Necessity — sbt 2's action-caching macro cannot cache a redefinition of `Compile /
+    //      compile`: it finds no `JsonFormat[xsbti.compile.CompileAnalysis]` at this call site and
+    //      fails to compile ("opt out with Def.uncached, or provide a given value"). The `dependsOn`
+    //      form hits the identical error, and the required JsonFormat is an sbt-internal instance we
+    //      do not want to reach into.
+    //   2. Correctness — if this compile were action-cached, a cache hit would skip the task body
+    //      entirely, so apicurioPull would never run and freshly-pulled schemas could be missed.
+    //      Opting out guarantees the pull runs before each compile.
+    //
+    // Trade-off (documented in README/CHANGELOG): for any project that enables this plugin,
+    // `Compile / compile` no longer participates in sbt 2's local/remote action cache. Zinc
+    // incremental compilation is unaffected.
+    Compile / compile := Def.uncached {
       apicurioPull.value
       (Compile / compile).value
     }

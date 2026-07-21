@@ -1,10 +1,10 @@
 package org.scalateams.sbt.apicurio
 
-import org.scalateams.sbt.apicurio.ApicurioModels._
-import io.circe.parser._
+import org.scalateams.sbt.apicurio.ApicurioModels.*
+import io.circe.parser.*
 import sbt.util.Logger
-import sttp.client3._
-import sttp.client3.circe._
+import sttp.client3.*
+import sttp.client3.circe.*
 
 import java.security.MessageDigest
 import scala.util.Try
@@ -36,6 +36,82 @@ object ApicurioClient {
     scala.util.Try(client.close()) // Always attempt close, isolate failures
     result.fold(throw _, identity) // Extract value or propagate original exception
   }
+}
+
+/** Orders version identifiers by Semantic Versioning 2.0.0 precedence.
+  *
+  * Apicurio version strings are typically semantic versions ("3.0.0", "4.5.1"). A bare or partial core such as "3" or
+  * "3.0" is zero-padded so "3" == "3.0.0"; build metadata (after '+') is ignored for precedence (§10); and a normal
+  * release outranks any pre-release of the same core (§11). Any string that is not valid semver is ordered below every
+  * semantic version (and lexicographically among other non-semver strings) so a custom label never masquerades as the
+  * latest version.
+  */
+private[apicurio] object SemanticVersionOrdering extends Ordering[String] {
+
+  final private case class Parsed(core: List[Long], preRelease: List[String])
+
+  def compare(a: String, b: String): Int =
+    (parse(a), parse(b)) match {
+      case (Some(x), Some(y)) => compareParsed(x, y)
+      case (Some(_), None)    => 1
+      case (None, Some(_))    => -1
+      case (None, None)       => a.compareTo(b)
+    }
+
+  private def parse(version: String): Option[Parsed] = {
+    val withoutBuild      = version.takeWhile(_ != '+')
+    val (coreStr, preStr) = withoutBuild.indexOf('-') match {
+      case -1  => (withoutBuild, "")
+      case idx => (withoutBuild.substring(0, idx), withoutBuild.substring(idx + 1))
+    }
+    val core              = coreStr.split('.').toList.map(parseNonNegativeLong)
+    if (coreStr.isEmpty || core.exists(_.isEmpty)) None
+    else Some(Parsed(core.flatten, if (preStr.isEmpty) Nil else preStr.split('.').toList))
+  }
+
+  // Long (not Int) so that large all-digit components do not overflow and get demoted to non-semver.
+  //
+  // Leading zeros are accepted on purpose ("01" orders as 1). This ordering drives version
+  // *precedence*, not strict semver *validation*: semver §9/§11 forbid leading zeros, but rejecting
+  // them here would only demote an otherwise-benign version string to "non-semver" and sort it below
+  // real versions — worse behavior than treating it numerically. Do not tighten this into a strict
+  // parser without also deciding what should happen to the versions it would start rejecting.
+  private def parseNonNegativeLong(s: String): Option[Long] =
+    if (s.nonEmpty && s.forall(_.isDigit)) Try(s.toLong).toOption else None
+
+  private def compareParsed(x: Parsed, y: Parsed): Int = {
+    val coreComparison = compareCore(x.core, y.core)
+    if (coreComparison != 0) coreComparison else comparePreRelease(x.preRelease, y.preRelease)
+  }
+
+  private def compareCore(x: List[Long], y: List[Long]): Int = {
+    val length = math.max(x.length, y.length)
+    x.padTo(length, 0L)
+      .zip(y.padTo(length, 0L))
+      .find { case (l, r) => l != r }
+      .map { case (l, r) => l.compare(r) }
+      .getOrElse(0)
+  }
+
+  private def comparePreRelease(x: List[String], y: List[String]): Int =
+    (x, y) match {
+      case (Nil, Nil) => 0
+      case (Nil, _)   => 1 // a release outranks a pre-release of the same core (§11)
+      case (_, Nil)   => -1
+      case _          =>
+        x.zip(y)
+          .map { case (l, r) => comparePreReleaseId(l, r) }
+          .find(_ != 0)
+          .getOrElse(x.length.compare(y.length)) // more identifiers wins when all preceding are equal
+    }
+
+  private def comparePreReleaseId(l: String, r: String): Int =
+    (parseNonNegativeLong(l), parseNonNegativeLong(r)) match {
+      case (Some(a), Some(b)) => a.compare(b)   // numeric identifiers compared numerically
+      case (Some(_), None)    => -1             // numeric identifiers have lower precedence (§11)
+      case (None, Some(_))    => 1
+      case (None, None)       => l.compareTo(r) // alphanumeric identifiers compared lexically
+    }
 }
 
 class ApicurioClient(
@@ -125,7 +201,7 @@ class ApicurioClient(
           case Right(body)                              =>
             parse(body).flatMap(_.hcursor.downField("versions").as[List[VersionMetadata]]) match {
               case Right(versions) if versions.nonEmpty =>
-                Right(versions.maxBy(_.version))
+                Right(versions.maxBy(_.version)(using SemanticVersionOrdering))
               case Right(_)                             =>
                 Left(ApicurioError.ArtifactNotFound(groupId, artifactId))
               case Left(error)                          =>
