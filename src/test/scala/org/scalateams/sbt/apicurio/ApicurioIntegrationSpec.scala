@@ -644,9 +644,9 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
          |"fields":[{"name":"leaf","type":"com.example.$leafId"}]}""".stripMargin
     val level    = ApicurioModels.CompatibilityLevel.Backward
 
-    def publishParent(leafVersion: String) = {
+    def publishParent(leafVersion: Option[String]) = {
       val leafRef =
-        ApicurioModels.ContentReference(Some(testGroupId), leafId, Some(leafVersion), s"com.example.$leafId")
+        ApicurioModels.ContentReference(Some(testGroupId), leafId, leafVersion, s"com.example.$leafId")
       client.publishSchema(testGroupId, parentId, ArtifactType.Avro, parent, "avsc", level, List(leafRef))
     }
 
@@ -654,20 +654,24 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
 
     try {
       client.createArtifact(testGroupId, leafId, ArtifactType.Avro, leaf, "avsc") shouldBe a[Right[_, _]]
-      publishParent("1") shouldBe a[Right[_, _]]
+      publishParent(Some("1")) shouldBe a[Right[_, _]]
 
-      publishParent("1") shouldBe a[Right[_, _]]
+      publishParent(Some("1")) shouldBe a[Right[_, _]]
       parentVersion shouldBe Right("1")
 
       // A reference moved to a newer version of its dependency is a change
       val newerLeaf = leaf.replace("[]", """[{"name":"note","type":["null","string"],"default":null}]""")
       client.createVersion(testGroupId, leafId, newerLeaf, "avsc") shouldBe a[Right[_, _]]
-      publishParent("2") shouldBe a[Right[_, _]]
+      publishParent(Some("2")) shouldBe a[Right[_, _]]
       parentVersion shouldBe Right("2")
 
       // The registry stores a reference to "latest", which the plugin sends when it knows no version, as sent
-      publishParent("latest") shouldBe a[Right[_, _]]
-      publishParent("latest") shouldBe a[Right[_, _]]
+      publishParent(Some("latest")) shouldBe a[Right[_, _]]
+      publishParent(Some("latest")) shouldBe a[Right[_, _]]
+      parentVersion shouldBe Right("3")
+
+      // It refuses a reference without a version, so a stored reference always has one
+      publishParent(None) shouldBe a[Left[_, _]]
       parentVersion shouldBe Right("3")
     } finally
       client.close()

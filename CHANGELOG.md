@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **"latest" is the newest version.** It was the maximum of the first page of versions (the oldest 20), compared as strings, so it stopped at version 9. It now comes from the registry's `latest` branch. This affects change detection, the versions that references point to, and `apicurioPull` with version `latest`.
+- **"latest" is the newest version.** It was the maximum of the first page of versions (the oldest 20), compared as strings, so it stopped at version 9. It now comes from the registry's `latest` branch, which Apicurio Registry 3.x has (the plugin already requires 3.x). This affects change detection, the versions that references point to, and `apicurioPull` with version `latest`.
 - **A schema with references no longer gets a new version on every publish.** The references stored with the latest version are now compared with the ones being sent, in any order and with an absent group read as the default group.
 
 ### Upgrading
