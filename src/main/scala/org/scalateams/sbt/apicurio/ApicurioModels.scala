@@ -124,6 +124,7 @@ object ApicurioModels {
 
   object ContentReference {
     implicit val encoder: Encoder[ContentReference] = deriveEncoder
+    implicit val decoder: Decoder[ContentReference] = deriveDecoder
   }
 
   case class CreateVersionRequest(

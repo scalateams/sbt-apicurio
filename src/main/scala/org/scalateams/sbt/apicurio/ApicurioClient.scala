@@ -36,6 +36,15 @@ object ApicurioClient {
     scala.util.Try(client.close()) // Always attempt close, isolate failures
     result.fold(throw _, identity) // Extract value or propagate original exception
   }
+
+  /** The group Apicurio assumes when a reference names none. */
+  private val DefaultGroup = "default"
+
+  /** Whether two lists hold the same references: in any order, with an absent group read as the default group. */
+  private[apicurio] def sameReferences(stored: List[ContentReference], sent: List[ContentReference]): Boolean = {
+    def key(ref: ContentReference) = ref.copy(groupId = ref.groupId.orElse(Some(DefaultGroup)))
+    stored.map(key).toSet == sent.map(key).toSet
+  }
 }
 
 class ApicurioClient(
@@ -106,10 +115,11 @@ class ApicurioClient(
     }
   }
 
-  /** Get latest version of an artifact
+  /** Get latest version of an artifact, from the registry's `latest` branch. Listing versions returns only the oldest
+    * 20, and their maximum compared as strings stops at "9".
     */
   def getLatestVersion(groupId: String, artifactId: String): ApicurioResult[VersionMetadata] = {
-    val url = uri"$baseUri/groups/$groupId/artifacts/$artifactId/versions"
+    val url = uri"$baseUri/groups/$groupId/artifacts/$artifactId/versions/branch=latest"
 
     logger.debug(s"Getting latest version: $groupId:$artifactId")
 
@@ -117,24 +127,53 @@ class ApicurioClient(
       val request = basicRequest
         .get(url)
         .headers(headers)
-        .response(asString)
+        .response(asJson[VersionMetadata])
 
       Try {
         val response = request.send(backend)
         response.body match {
-          case Right(body)                              =>
-            parse(body).flatMap(_.hcursor.downField("versions").as[List[VersionMetadata]]) match {
-              case Right(versions) if versions.nonEmpty =>
-                Right(versions.maxBy(_.version))
-              case Right(_)                             =>
-                Left(ApicurioError.ArtifactNotFound(groupId, artifactId))
-              case Left(error)                          =>
-                Left(ApicurioError.ParseError(s"Failed to parse versions: ${error.getMessage}"))
-            }
-          case Left(error) if response.code.code == 404 =>
+          case Right(version)                           => Right(version)
+          case Left(_) if response.code.code == 404     =>
             Left(ApicurioError.ArtifactNotFound(groupId, artifactId))
+          case Left(DeserializationException(_, error)) =>
+            Left(ApicurioError.ParseError(s"Failed to parse latest version: ${error.getMessage}"))
           case Left(error)                              =>
-            Left(ApicurioError.HttpError(response.code.code, error))
+            Left(ApicurioError.HttpError(response.code.code, error.getMessage))
+        }
+      }.fold(
+        ex => Left(ApicurioError.NetworkError(ex)),
+        either => either
+      )
+    }
+  }
+
+  /** Get the references stored with a version
+    */
+  def getVersionReferences(
+    groupId: String,
+    artifactId: String,
+    version: String
+  ): ApicurioResult[List[ContentReference]] = {
+    val url = uri"$baseUri/groups/$groupId/artifacts/$artifactId/versions/$version/references"
+
+    logger.debug(s"Getting version references: $groupId:$artifactId:$version")
+
+    authHeaders.flatMap { headers =>
+      val request = basicRequest
+        .get(url)
+        .headers(headers)
+        .response(asJson[List[ContentReference]])
+
+      Try {
+        val response = request.send(backend)
+        response.body match {
+          case Right(references)                        => Right(references)
+          case Left(_) if response.code.code == 404     =>
+            Left(ApicurioError.VersionNotFound(groupId, artifactId, version))
+          case Left(DeserializationException(_, error)) =>
+            Left(ApicurioError.ParseError(s"Failed to parse references: ${error.getMessage}"))
+          case Left(error)                              =>
+            Left(ApicurioError.HttpError(response.code.code, error.getMessage))
         }
       }.fold(
         ex => Left(ApicurioError.NetworkError(ex)),
@@ -426,19 +465,17 @@ class ApicurioClient(
       case Right(metadata) =>
         // Artifact exists, check if content or references have changed
         val result = for {
-          latestVersion   <- getLatestVersion(groupId, artifactId)
-          existingContent <- getVersionContent(groupId, artifactId, latestVersion.version)
+          latestVersion      <- getLatestVersion(groupId, artifactId)
+          existingContent    <- getVersionContent(groupId, artifactId, latestVersion.version)
+          existingReferences <- getVersionReferences(groupId, artifactId, latestVersion.version)
         } yield {
           val existingHash = computeHash(existingContent)
 
           // Check if content changed
           val contentChanged = contentHash != existingHash
 
-          // Check if references changed
-          // Note: We treat having ANY references as a change, since we can't easily
-          // retrieve existing references from the API to compare. This ensures
-          // references are always included even if content is identical.
-          val referencesChanged = references.nonEmpty
+          // Check if references changed from the ones stored with the latest version
+          val referencesChanged = !ApicurioClient.sameReferences(existingReferences, references)
 
           if (!contentChanged && !referencesChanged) {
             logger.info(s"Schema unchanged: $groupId:$artifactId (version ${latestVersion.version})")

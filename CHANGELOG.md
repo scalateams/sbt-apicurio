@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **"latest" is the newest version.** It was the maximum of the first page of versions (the oldest 20), compared as strings, so it stopped at version 9. It now comes from the registry's `latest` branch. This affects change detection, the versions that references point to, and `apicurioPull` with version `latest`.
+- **A schema with references no longer gets a new version on every publish.** The references stored with the latest version are now compared with the ones being sent, in any order and with an absent group read as the default group.
+
+### Upgrading
+
+- The first publish after upgrading can create one more version of a schema with references, when its stored references point to an older version of a dependency. After that, unchanged schemas keep their version.
+
 ## [0.2.0] - 2025-11-17
 
 ### Added

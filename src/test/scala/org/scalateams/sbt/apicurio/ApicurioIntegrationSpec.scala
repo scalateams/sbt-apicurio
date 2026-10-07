@@ -610,6 +610,80 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
       client.close()
   }
 
+  it should "resolve latest to the newest version once an artifact has more than 9 versions" taggedAs IntegrationTest in {
+    assumeApicurioAvailable()
+
+    val client          = new ApicurioClient(registryUrl, keycloakConfig, testLogger)
+    // A fresh artifact, so the newest version is known
+    val artifactId      = s"LatestProbe${System.currentTimeMillis}"
+    def content(n: Int) =
+      s"""{"type":"record","name":"LatestProbe","namespace":"com.example","doc":"v$n","fields":[]}"""
+
+    try {
+      client.createArtifact(testGroupId, artifactId, ArtifactType.Avro, content(1), "avsc") shouldBe a[Right[_, _]]
+      (2 to 11).foreach(n => client.createVersion(testGroupId, artifactId, content(n), "avsc") shouldBe a[Right[_, _]])
+
+      // Compared as strings, "9" is above "10" and "11"
+      client.getLatestVersion(testGroupId, artifactId).map(_.version) shouldBe Right("11")
+      val latest = client.getVersionContent(testGroupId, artifactId, "latest").getOrElse(fail("Expected Right"))
+      latest should include("\"v11\"")
+    } finally
+      client.close()
+  }
+
+  it should "keep the version of a schema whose content and references are unchanged" taggedAs IntegrationTest in {
+    assumeApicurioAvailable()
+
+    val client   = new ApicurioClient(registryUrl, keycloakConfig, testLogger)
+    val suffix   = System.currentTimeMillis
+    val leafId   = s"ChurnLeaf$suffix"
+    val parentId = s"ChurnParent$suffix"
+    val leaf     = s"""{"type":"record","name":"$leafId","namespace":"com.example","fields":[]}"""
+    val parent   =
+      s"""{"type":"record","name":"$parentId","namespace":"com.example",
+         |"fields":[{"name":"leaf","type":"com.example.$leafId"}]}""".stripMargin
+    val level    = ApicurioModels.CompatibilityLevel.Backward
+
+    def publishParent(leafVersion: String) = {
+      val leafRef =
+        ApicurioModels.ContentReference(Some(testGroupId), leafId, Some(leafVersion), s"com.example.$leafId")
+      client.publishSchema(testGroupId, parentId, ArtifactType.Avro, parent, "avsc", level, List(leafRef))
+    }
+
+    def parentVersion = client.getLatestVersion(testGroupId, parentId).map(_.version)
+
+    try {
+      client.createArtifact(testGroupId, leafId, ArtifactType.Avro, leaf, "avsc") shouldBe a[Right[_, _]]
+      publishParent("1") shouldBe a[Right[_, _]]
+
+      publishParent("1") shouldBe a[Right[_, _]]
+      parentVersion shouldBe Right("1")
+
+      // A reference moved to a newer version of its dependency is a change
+      val newerLeaf = leaf.replace("[]", """[{"name":"note","type":["null","string"],"default":null}]""")
+      client.createVersion(testGroupId, leafId, newerLeaf, "avsc") shouldBe a[Right[_, _]]
+      publishParent("2") shouldBe a[Right[_, _]]
+      parentVersion shouldBe Right("2")
+    } finally
+      client.close()
+  }
+
+  behavior of "ApicurioClient - Reference Comparison"
+
+  it should "match references in any order, with an absent group read as the default group" in {
+    val leaf   = ApicurioModels.ContentReference(Some(testGroupId), "Leaf", Some("3"), "com.example.Leaf")
+    val common = ApicurioModels.ContentReference(None, "Common", Some("1"), "com.example.Common")
+
+    ApicurioClient.sameReferences(List(leaf, common), List(common.copy(groupId = Some("default")), leaf)) shouldBe true
+  }
+
+  it should "tell apart a reference to another version, and a reference that is gone" in {
+    val leaf = ApicurioModels.ContentReference(Some(testGroupId), "Leaf", Some("3"), "com.example.Leaf")
+
+    ApicurioClient.sameReferences(List(leaf), List(leaf.copy(version = Some("4")))) shouldBe false
+    ApicurioClient.sameReferences(List(leaf), Nil) shouldBe false
+  }
+
   behavior of "End-to-End Workflow"
 
   it should "publish and pull all schema types" taggedAs IntegrationTest in {
