@@ -6,7 +6,7 @@ import org.scalatest.{BeforeAndAfterAll, Tag}
 import sbt.util.Logger
 import sbt.IO
 import java.io.File
-import org.scalateams.sbt.apicurio.ApicurioModels.{ApicurioError, ArtifactType}
+import org.scalateams.sbt.apicurio.ApicurioModels.{ApicurioError, ArtifactType, PublishOutcome}
 
 object IntegrationTest extends Tag("org.scalateams.sbt.apicurio.IntegrationTest")
 
@@ -610,6 +610,96 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
       client.close()
   }
 
+  it should "resolve latest to the newest version once an artifact has more than 9 versions" taggedAs IntegrationTest in {
+    assumeApicurioAvailable()
+
+    val client          = new ApicurioClient(registryUrl, keycloakConfig, testLogger)
+    // A fresh artifact, so the newest version is known
+    val artifactId      = s"LatestProbe${System.currentTimeMillis}"
+    def content(n: Int) =
+      s"""{"type":"record","name":"LatestProbe","namespace":"com.example","doc":"v$n","fields":[]}"""
+
+    try {
+      client.createArtifact(testGroupId, artifactId, ArtifactType.Avro, content(1), "avsc") shouldBe a[Right[_, _]]
+      (2 to 11).foreach(n => client.createVersion(testGroupId, artifactId, content(n), "avsc") shouldBe a[Right[_, _]])
+
+      // Compared as strings, "9" is above "10" and "11"
+      client.getLatestVersion(testGroupId, artifactId).map(_.version) shouldBe Right("11")
+      val latest = client.getVersionContent(testGroupId, artifactId, "latest").getOrElse(fail("Expected Right"))
+      latest should include("\"v11\"")
+    } finally
+      client.close()
+  }
+
+  it should "keep the version of a schema whose content and references are unchanged" taggedAs IntegrationTest in {
+    assumeApicurioAvailable()
+
+    val client   = new ApicurioClient(registryUrl, keycloakConfig, testLogger)
+    val suffix   = System.currentTimeMillis
+    val leafId   = s"ChurnLeaf$suffix"
+    val parentId = s"ChurnParent$suffix"
+    val leaf     = s"""{"type":"record","name":"$leafId","namespace":"com.example","fields":[]}"""
+    val parent   =
+      s"""{"type":"record","name":"$parentId","namespace":"com.example",
+         |"fields":[{"name":"leaf","type":"com.example.$leafId"}]}""".stripMargin
+    val level    = ApicurioModels.CompatibilityLevel.Backward
+
+    def leafRef(version: Option[String]) =
+      List(ApicurioModels.ContentReference(Some(testGroupId), leafId, version, s"com.example.$leafId"))
+
+    def publishParent(leafVersion: Option[String]) =
+      client.publish(testGroupId, parentId, ArtifactType.Avro, parent, "avsc", level, leafRef(leafVersion))
+
+    def parentVersion = client.getLatestVersion(testGroupId, parentId).map(_.version)
+
+    try {
+      client.createArtifact(testGroupId, leafId, ArtifactType.Avro, leaf, "avsc") shouldBe a[Right[_, _]]
+      publishParent(Some("1")) should matchPattern { case Right(_: PublishOutcome.Created) => }
+
+      publishParent(Some("1")) should matchPattern { case Right(_: PublishOutcome.Unchanged) => }
+      parentVersion shouldBe Right("1")
+
+      // A reference moved to a newer version of its dependency is a change
+      val newerLeaf = leaf.replace("[]", """[{"name":"note","type":["null","string"],"default":null}]""")
+      client.createVersion(testGroupId, leafId, newerLeaf, "avsc") shouldBe a[Right[_, _]]
+      publishParent(Some("2")) should matchPattern { case Right(_: PublishOutcome.Updated) => }
+      parentVersion shouldBe Right("2")
+
+      // The registry stores a reference to "latest", which the plugin sends when it knows no version, as sent
+      publishParent(Some("latest")) should matchPattern { case Right(_: PublishOutcome.Updated) => }
+      publishParent(Some("latest")) should matchPattern { case Right(_: PublishOutcome.Unchanged) => }
+      parentVersion shouldBe Right("3")
+
+      // publishSchema keeps its shape: an unchanged schema is the current version on the Right
+      client
+        .publishSchema(testGroupId, parentId, ArtifactType.Avro, parent, "avsc", level, leafRef(Some("latest")))
+        .map(_.map(_.version)) shouldBe Right(Right("3"))
+
+      // It refuses a reference without a version, so a stored reference always has one
+      publishParent(None) shouldBe a[Left[_, _]]
+      parentVersion shouldBe Right("3")
+    } finally
+      client.close()
+  }
+
+  behavior of "ApicurioClient - Reference Comparison"
+
+  it should "match references in any order, with an absent group read as the default group" in {
+    val leaf   = ApicurioModels.ContentReference(Some(testGroupId), "Leaf", Some("3"), "com.example.Leaf")
+    val common = ApicurioModels.ContentReference(None, "Common", Some("1"), "com.example.Common")
+
+    ApicurioClient.sameReferences(List(leaf, common), List(common.copy(groupId = Some("default")), leaf)) shouldBe true
+    ApicurioClient.sameReferences(List(common), List(common)) shouldBe true
+  }
+
+  it should "tell apart a reference to another version or name, and a reference that is gone" in {
+    val leaf = ApicurioModels.ContentReference(Some(testGroupId), "Leaf", Some("3"), "com.example.Leaf")
+
+    ApicurioClient.sameReferences(List(leaf), List(leaf.copy(version = Some("4")))) shouldBe false
+    ApicurioClient.sameReferences(List(leaf), List(leaf.copy(name = "com.example.Other"))) shouldBe false
+    ApicurioClient.sameReferences(List(leaf), Nil) shouldBe false
+  }
+
   behavior of "End-to-End Workflow"
 
   it should "publish and pull all schema types" taggedAs IntegrationTest in {
@@ -702,6 +792,8 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
           artifactId shouldBe "NonExistentArtifact"
         case _                                                         => fail("Expected ArtifactNotFound error")
       }
+      client.getLatestVersion(testGroupId, "NonExistentArtifact") shouldBe
+        Left(ApicurioError.ArtifactNotFound(testGroupId, "NonExistentArtifact"))
     } finally
       client.close()
   }
@@ -722,6 +814,8 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
           version shouldBe "999"
         case _                                                                 => fail("Expected VersionNotFound error")
       }
+      client.getVersionReferences(testGroupId, "TestUser", "999") shouldBe
+        Left(ApicurioError.VersionNotFound(testGroupId, "TestUser", "999"))
     } finally
       client.close()
   }
