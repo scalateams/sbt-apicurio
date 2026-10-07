@@ -664,6 +664,11 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
       client.createVersion(testGroupId, leafId, newerLeaf, "avsc") shouldBe a[Right[_, _]]
       publishParent("2") shouldBe a[Right[_, _]]
       parentVersion shouldBe Right("2")
+
+      // The registry stores a reference to "latest", which the plugin sends when it knows no version, as sent
+      publishParent("latest") shouldBe a[Right[_, _]]
+      publishParent("latest") shouldBe a[Right[_, _]]
+      parentVersion shouldBe Right("3")
     } finally
       client.close()
   }
@@ -675,12 +680,14 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
     val common = ApicurioModels.ContentReference(None, "Common", Some("1"), "com.example.Common")
 
     ApicurioClient.sameReferences(List(leaf, common), List(common.copy(groupId = Some("default")), leaf)) shouldBe true
+    ApicurioClient.sameReferences(List(common), List(common)) shouldBe true
   }
 
-  it should "tell apart a reference to another version, and a reference that is gone" in {
+  it should "tell apart a reference to another version or name, and a reference that is gone" in {
     val leaf = ApicurioModels.ContentReference(Some(testGroupId), "Leaf", Some("3"), "com.example.Leaf")
 
     ApicurioClient.sameReferences(List(leaf), List(leaf.copy(version = Some("4")))) shouldBe false
+    ApicurioClient.sameReferences(List(leaf), List(leaf.copy(name = "com.example.Other"))) shouldBe false
     ApicurioClient.sameReferences(List(leaf), Nil) shouldBe false
   }
 
@@ -776,6 +783,8 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
           artifactId shouldBe "NonExistentArtifact"
         case _                                                         => fail("Expected ArtifactNotFound error")
       }
+      client.getLatestVersion(testGroupId, "NonExistentArtifact") shouldBe
+        Left(ApicurioError.ArtifactNotFound(testGroupId, "NonExistentArtifact"))
     } finally
       client.close()
   }
@@ -796,6 +805,8 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
           version shouldBe "999"
         case _                                                                 => fail("Expected VersionNotFound error")
       }
+      client.getVersionReferences(testGroupId, "TestUser", "999") shouldBe
+        Left(ApicurioError.VersionNotFound(testGroupId, "TestUser", "999"))
     } finally
       client.close()
   }

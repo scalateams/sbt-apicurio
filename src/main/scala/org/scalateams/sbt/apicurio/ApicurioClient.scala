@@ -40,7 +40,9 @@ object ApicurioClient {
   /** The group Apicurio assumes when a reference names none. */
   private val DefaultGroup = "default"
 
-  /** Whether two lists hold the same references: in any order, with an absent group read as the default group. */
+  /** Whether two lists hold the same references: in any order, with an absent group read as the default group. Each
+    * reference counts once, and its name is compared too.
+    */
   private[apicurio] def sameReferences(stored: List[ContentReference], sent: List[ContentReference]): Boolean = {
     def key(ref: ContentReference) = ref.copy(groupId = ref.groupId.orElse(Some(DefaultGroup)))
     stored.map(key).toSet == sent.map(key).toSet
