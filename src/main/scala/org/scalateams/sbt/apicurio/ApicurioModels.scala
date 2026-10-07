@@ -156,6 +156,22 @@ object ApicurioModels {
     implicit val decoder: Decoder[VersionMetadata] = deriveDecoder
   }
 
+  /** What a publish did: created the artifact, added a version, or found the latest version already current. */
+  sealed trait PublishOutcome extends Product with Serializable {
+    def version: VersionMetadata
+  }
+
+  object PublishOutcome {
+
+    final case class Created(response: CreateArtifactResponse) extends PublishOutcome {
+      def version: VersionMetadata = response.version
+    }
+
+    final case class Updated(version: VersionMetadata) extends PublishOutcome
+
+    final case class Unchanged(version: VersionMetadata) extends PublishOutcome
+  }
+
   case class ApicurioDependency(
     groupId: String,
     artifactId: String,

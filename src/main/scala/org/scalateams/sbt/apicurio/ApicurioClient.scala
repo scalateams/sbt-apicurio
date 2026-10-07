@@ -440,7 +440,8 @@ class ApicurioClient(
   }
 
   /** Publish a schema - creates artifact if not exists, or creates new version if changed Returns
-    * Left(CreateArtifactResponse) if newly created, Right(VersionMetadata) if updated
+    * Left(CreateArtifactResponse) if newly created, Right(VersionMetadata) if updated or already current; `publish`
+    * tells those two apart
     *
     * Note: Changes to content OR references will trigger a new version
     */
@@ -452,7 +453,25 @@ class ApicurioClient(
     fileExtension: String,
     compatibilityLevel: CompatibilityLevel,
     references: List[ContentReference] = List.empty
-  ): ApicurioResult[Either[CreateArtifactResponse, VersionMetadata]] = {
+  ): ApicurioResult[Either[CreateArtifactResponse, VersionMetadata]] =
+    publish(groupId, artifactId, artifactType, content, fileExtension, compatibilityLevel, references).map {
+      case PublishOutcome.Created(response)  => Left(response)
+      case PublishOutcome.Updated(version)   => Right(version)
+      case PublishOutcome.Unchanged(version) => Right(version)
+    }
+
+  /** Publish a schema as publishSchema does, saying whether it created the artifact, added a version, or found the
+    * latest version already current
+    */
+  def publish(
+    groupId: String,
+    artifactId: String,
+    artifactType: ArtifactType,
+    content: String,
+    fileExtension: String,
+    compatibilityLevel: CompatibilityLevel,
+    references: List[ContentReference] = List.empty
+  ): ApicurioResult[PublishOutcome] = {
     val contentHash = computeHash(content)
 
     // Log what we're publishing
@@ -481,7 +500,7 @@ class ApicurioClient(
 
           if (!contentChanged && !referencesChanged) {
             logger.info(s"Schema unchanged: $groupId:$artifactId (version ${latestVersion.version})")
-            Right(Right(latestVersion))
+            Right(PublishOutcome.Unchanged(latestVersion))
           } else {
             if (contentChanged) logger.debug(s"Content changed for $artifactId")
             if (referencesChanged) logger.info(s"Adding/updating ${references.size} reference(s) for $artifactId")
@@ -489,12 +508,12 @@ class ApicurioClient(
             // Check compatibility before creating new version
             checkCompatibility(groupId, artifactId, content, compatibilityLevel) match {
               case Right(true)  =>
-                createVersion(groupId, artifactId, content, fileExtension, references).map(Right(_))
+                createVersion(groupId, artifactId, content, fileExtension, references).map(PublishOutcome.Updated)
               case Right(false) =>
                 Left(ApicurioError.IncompatibleSchema(groupId, artifactId, "Compatibility check failed"))
               case Left(err)    =>
                 logger.warn(s"Compatibility check failed, proceeding anyway: ${err.message}")
-                createVersion(groupId, artifactId, content, fileExtension, references).map(Right(_))
+                createVersion(groupId, artifactId, content, fileExtension, references).map(PublishOutcome.Updated)
             }
           }
         }
@@ -508,7 +527,8 @@ class ApicurioClient(
         } else {
           logger.info(s"Creating new artifact: $artifactId")
         }
-        createArtifact(groupId, artifactId, artifactType, content, fileExtension, references).map(Left(_))
+        createArtifact(groupId, artifactId, artifactType, content, fileExtension, references)
+          .map(PublishOutcome.Created)
 
       case Left(err) =>
         Left(err)

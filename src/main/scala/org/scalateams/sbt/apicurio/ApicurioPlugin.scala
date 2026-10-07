@@ -535,7 +535,7 @@ object ApicurioPlugin extends AutoPlugin {
                 // Resolve references using current published versions
                 val refs = resolveReferences(schemaWithRefs, state.publishedVersions)
 
-                client.publishSchema(
+                client.publish(
                   validGroupId,
                   artifactId,
                   schema.artifactType,
@@ -544,7 +544,7 @@ object ApicurioPlugin extends AutoPlugin {
                   compatLevel,
                   refs
                 ) match {
-                  case Right(Left(createResponse))               =>
+                  case Right(PublishOutcome.Created(createResponse)) =>
                     // New artifact created
                     val version = createResponse.version.version
                     log.info(s"✓ Created: $artifactId (${schema.artifactType.value}) version $version")
@@ -552,20 +552,23 @@ object ApicurioPlugin extends AutoPlugin {
                       publishedVersions = state.publishedVersions + (artifactId -> version),
                       published = state.published + 1
                     )
-                  case Right(Right(versionMeta))                 =>
-                    // New version created or existing version
-                    log.info(
-                      s"✓ ${if (versionMeta.version == "1") "Created" else "Updated"}: $artifactId version ${versionMeta.version}"
-                    )
+                  case Right(PublishOutcome.Updated(versionMeta))    =>
+                    log.info(s"✓ Updated: $artifactId version ${versionMeta.version}")
                     state.copy(
                       publishedVersions = state.publishedVersions + (artifactId -> versionMeta.version),
                       published = state.published + 1
                     )
-                  case Left(_: ApicurioError.ArtifactNotFound)   =>
+                  case Right(PublishOutcome.Unchanged(versionMeta))  =>
+                    log.info(s"- Unchanged: $artifactId (version ${versionMeta.version})")
+                    state.copy(
+                      publishedVersions = state.publishedVersions + (artifactId -> versionMeta.version),
+                      unchanged = state.unchanged + 1
+                    )
+                  case Left(_: ApicurioError.ArtifactNotFound)       =>
                     // Unexpected artifact not found error
                     log.error(s"✗ Failed: $artifactId - Unexpected artifact not found error")
                     state.copy(failed = state.failed + 1)
-                  case Left(_: ApicurioError.IncompatibleSchema) =>
+                  case Left(_: ApicurioError.IncompatibleSchema)     =>
                     // Schema unchanged - fetch current version for references
                     val updatedVersions = client.getLatestVersion(validGroupId, artifactId) match {
                       case Right(versionMeta) =>
@@ -579,7 +582,7 @@ object ApicurioPlugin extends AutoPlugin {
                       publishedVersions = updatedVersions,
                       unchanged = state.unchanged + 1
                     )
-                  case Left(err)                                 =>
+                  case Left(err)                                     =>
                     log.error(s"✗ Failed: $artifactId - ${err.message}")
                     state.copy(failed = state.failed + 1)
                 }

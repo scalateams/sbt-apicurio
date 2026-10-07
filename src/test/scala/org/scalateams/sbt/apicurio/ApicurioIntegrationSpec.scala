@@ -6,7 +6,7 @@ import org.scalatest.{BeforeAndAfterAll, Tag}
 import sbt.util.Logger
 import sbt.IO
 import java.io.File
-import org.scalateams.sbt.apicurio.ApicurioModels.{ApicurioError, ArtifactType}
+import org.scalateams.sbt.apicurio.ApicurioModels.{ApicurioError, ArtifactType, PublishOutcome}
 
 object IntegrationTest extends Tag("org.scalateams.sbt.apicurio.IntegrationTest")
 
@@ -644,31 +644,36 @@ class ApicurioIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAndAf
          |"fields":[{"name":"leaf","type":"com.example.$leafId"}]}""".stripMargin
     val level    = ApicurioModels.CompatibilityLevel.Backward
 
-    def publishParent(leafVersion: Option[String]) = {
-      val leafRef =
-        ApicurioModels.ContentReference(Some(testGroupId), leafId, leafVersion, s"com.example.$leafId")
-      client.publishSchema(testGroupId, parentId, ArtifactType.Avro, parent, "avsc", level, List(leafRef))
-    }
+    def leafRef(version: Option[String]) =
+      List(ApicurioModels.ContentReference(Some(testGroupId), leafId, version, s"com.example.$leafId"))
+
+    def publishParent(leafVersion: Option[String]) =
+      client.publish(testGroupId, parentId, ArtifactType.Avro, parent, "avsc", level, leafRef(leafVersion))
 
     def parentVersion = client.getLatestVersion(testGroupId, parentId).map(_.version)
 
     try {
       client.createArtifact(testGroupId, leafId, ArtifactType.Avro, leaf, "avsc") shouldBe a[Right[_, _]]
-      publishParent(Some("1")) shouldBe a[Right[_, _]]
+      publishParent(Some("1")) should matchPattern { case Right(_: PublishOutcome.Created) => }
 
-      publishParent(Some("1")) shouldBe a[Right[_, _]]
+      publishParent(Some("1")) should matchPattern { case Right(_: PublishOutcome.Unchanged) => }
       parentVersion shouldBe Right("1")
 
       // A reference moved to a newer version of its dependency is a change
       val newerLeaf = leaf.replace("[]", """[{"name":"note","type":["null","string"],"default":null}]""")
       client.createVersion(testGroupId, leafId, newerLeaf, "avsc") shouldBe a[Right[_, _]]
-      publishParent(Some("2")) shouldBe a[Right[_, _]]
+      publishParent(Some("2")) should matchPattern { case Right(_: PublishOutcome.Updated) => }
       parentVersion shouldBe Right("2")
 
       // The registry stores a reference to "latest", which the plugin sends when it knows no version, as sent
-      publishParent(Some("latest")) shouldBe a[Right[_, _]]
-      publishParent(Some("latest")) shouldBe a[Right[_, _]]
+      publishParent(Some("latest")) should matchPattern { case Right(_: PublishOutcome.Updated) => }
+      publishParent(Some("latest")) should matchPattern { case Right(_: PublishOutcome.Unchanged) => }
       parentVersion shouldBe Right("3")
+
+      // publishSchema keeps its shape: an unchanged schema is the current version on the Right
+      client
+        .publishSchema(testGroupId, parentId, ArtifactType.Avro, parent, "avsc", level, leafRef(Some("latest")))
+        .map(_.map(_.version)) shouldBe Right(Right("3"))
 
       // It refuses a reference without a version, so a stored reference always has one
       publishParent(None) shouldBe a[Left[_, _]]
